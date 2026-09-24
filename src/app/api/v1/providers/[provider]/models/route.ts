@@ -120,6 +120,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     });
   }
 
+  // The body below is a re-serialized SUBSET of the unified catalog, so the upstream
+  // headers must not be forwarded verbatim: `catalogStringResponse` sets a
+  // `content-length` for the FULL catalog. Advertising that stale length on a much
+  // smaller body makes HTTP/2+HTTP/3 clients abort the stream mid-response
+  // (net::ERR_QUIC_PROTOCOL_ERROR behind an HTTP/3 proxy, as seen in Docker deploys).
+  const headers = new Headers(response.headers);
+  headers.delete("content-length");
+  headers.delete("content-encoding");
+
   return Response.json(
     {
       object: payload.object || "list",
@@ -127,7 +136,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     },
     {
       status: response.status,
-      headers: response.headers,
+      headers,
     }
   );
 }

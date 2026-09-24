@@ -163,6 +163,42 @@ test("#13829: compatible provider IDs return synced models owned by their public
   assert.equal(body.data[0].parent, null);
 });
 
+// Regression: the route re-serializes a FILTERED subset of the unified catalog but used
+// to forward the upstream catalog headers verbatim. Those headers carry the
+// `content-length` of the FULL catalog (set by catalogStringResponse), so the response
+// advertised far more bytes than it actually sent. Browsers over HTTP/3 abort the stream
+// with net::ERR_QUIC_PROTOCOL_ERROR (reported as "status 200 (OK)" but no usable body) —
+// which is exactly what a Docker deploy behind an HTTP/3 reverse proxy shows.
+test("#14647: does not advertise the full catalog's stale content-length on a filtered body", async () => {
+  const res = await callGET("cliproxyapi");
+  const bodyText = await res.clone().text();
+  const declared = res.headers.get("content-length");
+
+  if (declared !== null) {
+    assert.equal(
+      declared,
+      String(Buffer.byteLength(bodyText)),
+      "content-length must match the re-serialized body, never the upstream catalog's"
+    );
+  }
+});
+
+test("#14647: registry-backed providers never emit a mismatched content-length", async () => {
+  // A real registry provider goes down the unified-catalog branch (the one that copied
+  // `response.headers`), unlike the embedded-service short-circuit above.
+  for (const provider of ["claude", "openai"]) {
+    const res = await callGET(provider);
+    const bodyText = await res.clone().text();
+    const declared = res.headers.get("content-length");
+    if (declared === null) continue;
+    assert.equal(
+      declared,
+      String(Buffer.byteLength(bodyText)),
+      `content-length mismatch for provider "${provider}"`
+    );
+  }
+});
+
 test("GET /v1/providers/:provider/models rejects non-matching connection-like strings", async () => {
   // Looks like a connection ID but with wrong prefix
   const res = await callGET("custom-compatible-chat-a1b2c3d4-e5f6-7890-abcd-ef1234567890");
