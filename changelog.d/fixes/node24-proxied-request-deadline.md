@@ -1,0 +1,1 @@
+- **Responses / streaming:** avoid cloning Next.js proxy-wrapped requests through Node 24's native `Request` constructor when attaching the slow-stream deadline, preventing `Cannot read private member #state` 500 errors across chat endpoints.

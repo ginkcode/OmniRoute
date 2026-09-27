@@ -464,6 +464,29 @@ test("aborting the client signal stops the keepalive stream (#2544)", async () =
   assert.equal(await Promise.race([drained, timed]), true, "stream should close after abort");
 });
 
+// Next.js can pass a Proxy-wrapped Request to route handlers. Node 24's undici
+// rejects `new Request(proxy)` because the proxy does not own Request's private
+// `#state`; reconstructing from public fields must keep the request usable.
+test("withDeadlineSignal accepts a Proxy-wrapped Request on Node 24", async () => {
+  const original = new Request("http://localhost/v1/responses", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Test": "proxy-request" },
+    body: JSON.stringify({ model: "m", stream: true }),
+  });
+  const proxied = new Proxy(original, {
+    get(target, property) {
+      return Reflect.get(target, property, target);
+    },
+  });
+
+  const { wrappedReq } = withDeadlineSignal(proxied);
+
+  assert.equal(wrappedReq.url, original.url);
+  assert.equal(wrappedReq.method, "POST");
+  assert.equal(wrappedReq.headers.get("x-test"), "proxy-request");
+  assert.deepEqual(await wrappedReq.json(), { model: "m", stream: true });
+});
+
 // Last-resort slow-path deadline: a handler that never resolves must not hold the
 // client stream forever. At slowPathDeadlineMs the wrapper aborts the internal
 // deadline controller (observable here because the test wires the helper-built
