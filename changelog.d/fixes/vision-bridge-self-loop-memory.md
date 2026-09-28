@@ -1,0 +1,1 @@
+- **Vision Bridge:** authenticate internal describe calls with a valid OmniRoute API key while using a separate process-local admission marker, and serialize image descriptions so image-heavy coding-agent histories cannot multiply native request-buffer memory until the server becomes unresponsive.

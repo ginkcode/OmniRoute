@@ -66,8 +66,8 @@ Flow:
    reroute vs describe. Reroute returns `modifiedPayload` with only `model`
    swapped, plus meta `{ rerouted, fromModel, toModel, imagesKept }`.
 5. Describe path: cap images at `maxImages`, compose the task-aware prompt,
-   consult the describe cache, call the vision model **in parallel**
-   (`Promise.allSettled`), and inject `[Image N]: <description>` text parts in
+   consult the describe cache, call the vision model **serially** to bound the
+   native memory held by base64 request bodies, and inject `[Image N]: <description>` text parts in
    their place. A failed describe yields `null` and the original image part is
    **preserved** (#4012) — except on the combo describe path when every
    describe failed, where a confirmed non-vision upstream gets an

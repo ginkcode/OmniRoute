@@ -94,6 +94,8 @@ test("callVisionModel returns description on success", async () => {
 });
 
 test("callVisionModel can route a catalog model through the OmniRoute self-loop", async () => {
+  const previousOmniRouteKey = process.env.OMNIROUTE_API_KEY;
+  process.env.OMNIROUTE_API_KEY = "sk-valid-self-loop-key";
   let capturedUrl = "";
   let capturedBody: Record<string, unknown> = {};
   let capturedHeaders: Record<string, string> = {};
@@ -104,22 +106,40 @@ test("callVisionModel can route a catalog model through the OmniRoute self-loop"
     return Response.json({ choices: [{ message: { content: "GREEN_SCENE_2" } }] });
   };
 
-  const result = await callVisionModel("data:image/png;base64,iVBORw0KGgo", {
-    model: "openai/gpt-4o-mini",
-    prompt: "Describe this frame",
-    timeoutMs: 30000,
-    maxImages: 1,
-    routeThroughOmniRoute: true,
-    fetchImpl,
-  });
+  try {
+    const result = await callVisionModel("data:image/png;base64,iVBORw0KGgo", {
+      model: "openai/gpt-4o-mini",
+      prompt: "Describe this frame",
+      timeoutMs: 30000,
+      maxImages: 1,
+      routeThroughOmniRoute: true,
+      fetchImpl,
+    });
 
-  const url = new URL(capturedUrl);
-  assert.equal(url.hostname, "localhost");
-  assert.equal(url.pathname, "/v1/chat/completions");
-  assert.equal(capturedBody.model, "openai/gpt-4o-mini");
-  assert.equal(capturedHeaders["x-omniroute-admission-bypass"], "internal");
-  assert.match(capturedHeaders["x-omniroute-disabled-guardrails"], /video-bridge/);
-  assert.equal(result, "GREEN_SCENE_2");
+    const url = new URL(capturedUrl);
+    assert.equal(url.hostname, "localhost");
+    assert.equal(url.pathname, "/v1/chat/completions");
+    assert.equal(capturedBody.model, "openai/gpt-4o-mini");
+    assert.equal(
+      capturedHeaders.Authorization,
+      "Bearer sk-valid-self-loop-key",
+      "the API-auth credential must not be replaced by the private admission-bypass secret"
+    );
+    assert.equal(
+      capturedHeaders["x-omniroute-admission-bypass"],
+      undefined,
+      "self-loop admission must not depend on the public bypass header"
+    );
+    assert.ok(
+      capturedHeaders["x-omniroute-self-hop"],
+      "the private own-listener marker must carry admission bypass independently of API auth"
+    );
+    assert.match(capturedHeaders["x-omniroute-disabled-guardrails"], /video-bridge/);
+    assert.equal(result, "GREEN_SCENE_2");
+  } finally {
+    if (previousOmniRouteKey === undefined) delete process.env.OMNIROUTE_API_KEY;
+    else process.env.OMNIROUTE_API_KEY = previousOmniRouteKey;
+  }
 });
 
 test("callVisionModel throws on HTTP error", async () => {

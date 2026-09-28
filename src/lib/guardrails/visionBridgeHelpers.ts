@@ -3,9 +3,13 @@
  */
 import { detectMediaParts, type MediaPart } from "@omniroute/open-sse/utils/mediaParts";
 import { normalizeDataUri } from "@omniroute/open-sse/utils/imageNormalize";
+import {
+  isOwnListenerUrl,
+  ownListenerSelfHopToken,
+  SELF_HOP_HEADER,
+} from "@omniroute/open-sse/utils/selfHop";
 import { fetchRemoteImage } from "@/shared/network/remoteImageFetch";
 import { getRuntimePorts } from "@/lib/runtime/ports";
-import { resolveSelfLoopBearer } from "@/shared/middleware/chatBodyAdmission";
 import { getBestVisionModel, getFallbackModels, recordLatency } from "./visionBridgeRouter";
 import { REGISTRY } from "@omniroute/open-sse/config/providers";
 import { fetch as undiciFetch } from "undici";
@@ -77,16 +81,16 @@ let selfLoopKeyPromise: Promise<string> | null = null;
  *
  * The `sk_omniroute` sentinel works only when REQUIRE_API_KEY is disabled; on
  * REQUIRE_API_KEY instances it is rejected with 401 "Missing API key", which
- * silently breaks every vision-bridge describe. Priority:
- *   1. VISION_BRIDGE_API_KEY env (already handled by resolveProviderApiKey —
- *      kept here for the injected-resolver test path).
+ * silently breaks every vision-bridge describe. Provider credentials must not
+ * be reused here: the destination is OmniRoute itself, not the upstream. Priority:
+ *   1. OMNIROUTE_API_KEY / ROUTER_API_KEY persistent passthrough key.
  *   2. Injected resolver (tests) or the DB-backed `getOrCreateApiKey()` —
  *      memoized so at most one key is created per process.
  *   3. `sk_omniroute` as a final fallback (local mode without auth).
  */
 export async function resolveSelfLoopApiKey(resolver?: () => Promise<string>): Promise<string> {
-  const envKey = (process.env.VISION_BRIDGE_API_KEY || "").trim();
-  if (envKey) return envKey;
+  const omniRouteKey = (process.env.OMNIROUTE_API_KEY || process.env.ROUTER_API_KEY || "").trim();
+  if (omniRouteKey) return omniRouteKey;
   if (resolver) {
     const key = (await resolver()).trim();
     if (key) return key;
@@ -769,14 +773,10 @@ async function callVisionModelSingle(
         ? `http://localhost:${getRuntimePorts().port}/v1`
         : resolveVisionBridgeBaseUrl(config.model);
 
-      // When routing through the OmniRoute self-loop (non-standard provider),
-      // keep the full provider-prefixed model ID so OmniRoute can resolve the
-      // correct provider backend. Only strip the prefix for direct OpenAI calls.
-      const useFullModelId =
-        routeThroughOmniRoute ||
-        (baseUrl.startsWith("http://localhost") &&
-          config.model.includes("/") &&
-          !config.model.startsWith("openai/"));
+      // Keep the full provider-prefixed model ID for requests to this process's
+      // own listener so OmniRoute can resolve the correct provider backend.
+      const selfLoop = routeThroughOmniRoute || isOwnListenerUrl(baseUrl);
+      const useFullModelId = selfLoop && config.model.includes("/");
       const requestModel = useFullModelId ? config.model : modelName;
 
       // Build headers with optional recursion guard for self-loop calls.
@@ -784,7 +784,9 @@ async function callVisionModelSingle(
       // guardrail on the sub-request to prevent infinite recursion.
       // Use a real DB-backed key for self-loop (sk_omniroute is rejected by
       // REQUIRE_API_KEY instances with 401 "Missing API key").
-      const selfLoopApiKey = resolvedApiKey || (await resolveSelfLoopApiKey());
+      const requestApiKey = selfLoop
+        ? await resolveSelfLoopApiKey()
+        : resolvedApiKey || (await resolveSelfLoopApiKey());
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         // Explicit JSON opt-in: without `Accept: application/json` OmniRoute's
@@ -793,9 +795,9 @@ async function callVisionModelSingle(
         // parse (`Unexpected token 'd'`), failing the whole vision-bridge
         // describe path. Pair with `stream: false` below.
         Accept: "application/json",
-        Authorization: `Bearer ${selfLoopApiKey}`,
+        Authorization: `Bearer ${requestApiKey}`,
       };
-      if (useFullModelId) {
+      if (selfLoop) {
         headers["x-omniroute-disabled-guardrails"] = routeThroughOmniRoute
           ? "vision-bridge,video-bridge"
           : "vision-bridge";
@@ -803,18 +805,13 @@ async function callVisionModelSingle(
         // single heavyweight admission lease (`CHAT_MAX_HEAVY_IN_FLIGHT=1`), so a
         // large base64-image describe body would be rejected with 503
         // `chat_admission_busy` before it is described. The route only honors
-        // this header for trusted self-loop credentials (the local
-        // `sk_omniroute` sentinel OR the operator-configured env key), so
-        // external clients cannot use it to bypass admission.
-        headers["x-omniroute-admission-bypass"] = "internal";
+        // Keep API authentication and admission identity separate. The private
+        // process-local marker proves this is an own-listener hop and is the only
+        // admission-bypass credential; Authorization remains a real DB/env key.
+        headers[SELF_HOP_HEADER] = ownListenerSelfHopToken();
         // The compression pipeline must not touch the image payload of the
         // self-loop describe call (stacked RTK/Caveman can mangle data URIs).
         headers["x-omniroute-compression"] = "off";
-        // The admission bypass honors the env key when set (REQUIRE_API_KEY=true
-        // deployments) and the `sk_omniroute` sentinel otherwise. Force the same
-        // resolved credential so the bypass holds even when a real vision key is
-        // configured for the vision model's provider.
-        headers["Authorization"] = `Bearer ${resolveSelfLoopBearer()}`;
       }
 
       response = await fetchImpl(`${baseUrl}/chat/completions`, {

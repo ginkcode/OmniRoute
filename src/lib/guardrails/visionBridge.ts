@@ -39,6 +39,46 @@ type ComboVisionBridgeDecision = "process" | "skip" | "not-combo" | "no-vision";
 
 type LeafVisionTally = { hasVision: boolean; hasNonVision: boolean };
 
+// One process-wide slot prevents concurrent parent requests from each creating
+// another large serialized JSON/Undici body. The promise chain never rejects;
+// each holder releases its successor in `finally` even when the provider fails.
+let visionDescriptionTail: Promise<void> = Promise.resolve();
+
+async function withVisionDescriptionSlot<T>(work: () => Promise<T>): Promise<T> {
+  const predecessor = visionDescriptionTail;
+  let release: () => void = () => undefined;
+  visionDescriptionTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await predecessor;
+  try {
+    return await work();
+  } finally {
+    release();
+  }
+}
+
+/**
+ * Settle image-description work serially. Each item can contain a large base64
+ * payload that is copied again by JSON serialization and the HTTP client. Running
+ * the whole history concurrently multiplies native memory outside V8 and can push
+ * a small container into swap before heap-pressure guards can react.
+ */
+async function settleSerially<TInput, TOutput>(
+  items: readonly TInput[],
+  work: (item: TInput, index: number) => Promise<TOutput>
+): Promise<PromiseSettledResult<TOutput>[]> {
+  const results: PromiseSettledResult<TOutput>[] = [];
+  for (let index = 0; index < items.length; index++) {
+    try {
+      results.push({ status: "fulfilled", value: await work(items[index], index) });
+    } catch (reason) {
+      results.push({ status: "rejected", reason });
+    }
+  }
+  return results;
+}
+
 /// Evaluate a single `kind: "model"` step's proven vision capability.
 /// Returns null when the step lacks a valid model string (malformed step).
 function evaluateModelStepCapability(s: Record<string, unknown>): "vision" | "non-vision" | null {
@@ -482,7 +522,7 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
     // 11. Limit images
     const limitedParts = imageParts.slice(0, config.maxImages);
 
-    // 12. Call vision model for each image in parallel (injectable for testing)
+    // 12. Call vision model for each image (injectable for testing)
     const callVision = this.deps.callVisionModel ?? defaultCallVisionModel;
     const logger = context.log;
     const startTime = Date.now();
@@ -523,21 +563,24 @@ export class VisionBridgeGuardrail extends BaseGuardrail {
     // on the first describe, so no description quality is lost.
     const cache = runtime.cacheEnabled ? getSharedBridgeCacheFor(runtime) : null;
 
-    // Process all images in parallel using Promise.allSettled for fail-partial behavior
-    const results = await Promise.allSettled(
-      limitedParts.map(async (imagePart, i) => {
-        const key = cache ? bridgeCacheKey(imagePart.imageUrl, config.prompt, config.model) : null;
-        const cached = key && cache ? cache.get(key) : undefined;
-        const description = cached ?? (await callVision(imagePart.imageUrl, describeConfig));
-        if (cached === undefined && key && cache) cache.set(key, description);
-        recordBridgeUse("vision", { cacheHit: cached !== undefined });
-        const capped =
-          runtime.maxChars > 0 && description.length > runtime.maxChars
-            ? description.slice(0, runtime.maxChars) + "…"
-            : description;
-        return `[Image ${i + 1}]: ${capped}`;
-      })
-    );
+    // Process images serially while preserving allSettled-style fail-partial
+    // behavior. Claude Code resends historical base64 images on every turn; a
+    // parallel fan-out materializes one JSON + HTTP body per image at once and
+    // can exhaust native memory even while V8 heap usage remains low.
+    const results = await settleSerially(limitedParts, async (imagePart, i) => {
+      const key = cache ? bridgeCacheKey(imagePart.imageUrl, config.prompt, config.model) : null;
+      const cached = key && cache ? cache.get(key) : undefined;
+      const description =
+        cached ??
+        (await withVisionDescriptionSlot(() => callVision(imagePart.imageUrl, describeConfig)));
+      if (cached === undefined && key && cache) cache.set(key, description);
+      recordBridgeUse("vision", { cacheHit: cached !== undefined });
+      const capped =
+        runtime.maxChars > 0 && description.length > runtime.maxChars
+          ? description.slice(0, runtime.maxChars) + "…"
+          : description;
+      return `[Image ${i + 1}]: ${capped}`;
+    });
 
     // Collect descriptions maintaining original order. A failed describe yields
     // `null` so the original image is preserved downstream (#4012) — replacing it
