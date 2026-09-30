@@ -829,6 +829,25 @@ export function logRetryHintUnreadable(
 }
 
 /**
+ * FastAPI backends (e.g. the Codex backend) reject requests with `{"detail": ...}`,
+ * where detail is a string or a list of `{ msg }` validation entries.
+ */
+function extractFastApiDetail(detail: unknown): string | null {
+  if (typeof detail === "string") return detail || null;
+  if (!Array.isArray(detail)) return null;
+  const messages = detail
+    .map((entry) =>
+      typeof entry === "string"
+        ? entry
+        : entry && typeof entry === "object" && typeof entry.msg === "string"
+          ? entry.msg
+          : null
+    )
+    .filter((entry): entry is string => Boolean(entry));
+  return messages.length > 0 ? messages.join("; ") : null;
+}
+
+/**
  * Parse upstream provider error response
  * @param {Response} response - Fetch response from provider
  * @param {string} provider - Provider name (for Antigravity-specific parsing)
@@ -859,7 +878,8 @@ export async function parseUpstreamError(response: Response, provider: string | 
         ? clinepassEnvError.message
         : json.error?.message ||
           json.message ||
-          (typeof json.error === "string" ? json.error : null);
+          (typeof json.error === "string" ? json.error : null) ||
+          extractFastApiDetail(json.detail);
       message =
         typeof extractedMessage === "string"
           ? extractedMessage
