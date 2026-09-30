@@ -178,6 +178,21 @@ test("provider models route merges live Codex models with the local catalog then
   assert.ok(modelIds.has("gpt-5.6-sol"));
   assert.ok(modelIds.has("gpt-5.6-sol-ultra"));
   assert.ok(modelIds.has("gpt-5.6-sol-max"));
+  // GPT-6.1 Sol is rollout-gated and may be absent from an account's live list.
+  // The local catalog must still make the base model and every selectable effort
+  // variant available to "Import from /models".
+  for (const id of [
+    "gpt-6.1-sol",
+    "gpt-6.1-sol-ultra",
+    "gpt-6.1-sol-max",
+    "gpt-6.1-sol-xhigh",
+    "gpt-6.1-sol-high",
+    "gpt-6.1-sol-medium",
+    "gpt-6.1-sol-low",
+  ]) {
+    assert.ok(modelIds.has(id), id);
+    assert.ok(syncedIds.has(id), `synced ${id}`);
+  }
   // Live payload wins on overlapping fields; local catalog supplies local-only
   // variants. EXCEPTION: capacity limits (inputTokenLimit/outputTokenLimit)
   // merge conservatively — the smaller of live vs. pinned wins, never the

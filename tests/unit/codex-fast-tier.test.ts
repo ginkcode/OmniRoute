@@ -47,6 +47,7 @@ test("Codex global service mode distinguishes no setting from explicit tiers", (
       tier: "default",
       supportedModels: [
         "gpt-6-astra",
+        "gpt-6.1-sol",
         "gpt-6-sol",
         "gpt-6-luna",
         "gpt-5.6-sol",
@@ -196,7 +197,7 @@ test("GPT-6 global Fast defaults inject priority for base and prefixed effort mo
     { codexServiceTier: true },
     { codexFastServiceTier: true },
   ];
-  for (const model of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
+  for (const model of ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"]) {
     for (const id of [model, `cx/${model}`, `codex/${model}-high`]) {
       for (const settings of settingsVariants) {
         const body: Record<string, unknown> = {};
@@ -247,7 +248,7 @@ test("GPT-6 Fast defaults preserve explicit tiers and operator model selections"
 });
 
 test("GPT-6 VS Code service-tier choices rewrite Fast variants to priority requests", () => {
-  for (const model of ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]) {
+  for (const model of ["gpt-6-astra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna"]) {
     const id = `codex/${model}`;
     const variants = expandVscodeServiceTierModels([{ id, owned_by: "codex" }]);
     assert.deepEqual(

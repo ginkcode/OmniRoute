@@ -8,10 +8,11 @@ import { getPricingForModel } from "../../src/shared/constants/pricing.ts";
 import { getCodexFastCostMultiplier } from "../../src/lib/usage/costCalculator.ts";
 import { extendCodexGpt56EffortValues } from "../../src/shared/reasoning/effortStandardization.ts";
 import * as reasoningMetadata from "../../src/lib/vscode/reasoningMetadata.ts";
+import { CODEX_NATIVE_UNPREFIXED_MODELS } from "../../open-sse/services/model.ts";
 
-// The live Codex catalog (client 0.155.1) advertises Sol at low..ultra and Luna at
-// low..max, mirroring the GPT-5.6 Sol/Luna split.
+// The live Codex catalog advertises Sol models at low..ultra and Luna at low..max.
 const FAMILIES = [
+  { model: "gpt-6.1-sol", efforts: ["ultra", "max", "xhigh", "high", "medium", "low"] },
   { model: "gpt-6-sol", efforts: ["ultra", "max", "xhigh", "high", "medium", "low"] },
   { model: "gpt-6-luna", efforts: ["max", "xhigh", "high", "medium", "low"] },
 ] as const;
@@ -27,7 +28,7 @@ function transform(model: string, body: Record<string, unknown>) {
   });
 }
 
-test("Codex exposes GPT-6 Sol and Luna with their effort variants", () => {
+test("Codex exposes GPT-6.1 Sol, GPT-6 Sol, and Luna with their effort variants", () => {
   for (const provider of ["codex", "codex-app-server"]) {
     const models = getModelsByProviderId(provider);
     for (const { model, efforts } of FAMILIES) {
@@ -46,12 +47,15 @@ test("Codex exposes GPT-6 Sol and Luna with their effort variants", () => {
         assert.equal(entry.supportsReasoning, true);
         assert.equal(entry.supportsVision, true);
         assert.equal(entry.supportsXHighEffort, true);
+        if (model === "gpt-6.1-sol") {
+          assert.equal(CODEX_NATIVE_UNPREFIXED_MODELS.has(id), true, `native ${id}`);
+        }
       }
     }
   }
 });
 
-test("GPT-6 Sol and Luna effort aliases reach Codex as the base model", () => {
+test("GPT-6.1 Sol, GPT-6 Sol, and Luna effort aliases reach Codex as the base model", () => {
   for (const { model, efforts } of FAMILIES) {
     for (const effort of efforts) {
       const result = transform(`${model}-${effort}`, {});
@@ -61,7 +65,12 @@ test("GPT-6 Sol and Luna effort aliases reach Codex as the base model", () => {
   }
 });
 
-test("Explicit max reasoning is not clamped to xhigh for GPT-6 Sol and Luna", () => {
+test("Explicit max reasoning is not clamped to xhigh for GPT-6 Sol models and Luna", () => {
+  assert.equal(transform("gpt-6.1-sol", { reasoning: { effort: "max" } }).reasoning.effort, "max");
+  assert.equal(
+    transform("gpt-6.1-sol", { reasoning: { effort: "ultra" } }).reasoning.effort,
+    "max"
+  );
   assert.equal(transform("gpt-6-sol", { reasoning: { effort: "max" } }).reasoning.effort, "max");
   assert.equal(transform("gpt-6-sol", { reasoning: { effort: "ultra" } }).reasoning.effort, "max");
   assert.equal(transform("gpt-6-luna", { reasoning: { effort: "max" } }).reasoning.effort, "max");
@@ -100,6 +109,8 @@ async function runResponsesLiteRequest(model: string): Promise<Record<string, un
 
 test("Responses Lite keeps parallel tool calls only for Sol ultra delegation", async () => {
   // The live catalog describes only `ultra` as automatic task delegation.
+  assert.equal((await runResponsesLiteRequest("gpt-6.1-sol-ultra")).parallel_tool_calls, true);
+  assert.equal((await runResponsesLiteRequest("gpt-6.1-sol-max")).parallel_tool_calls, false);
   assert.equal((await runResponsesLiteRequest("gpt-6-sol-ultra")).parallel_tool_calls, true);
   assert.equal((await runResponsesLiteRequest("gpt-6-sol-max")).parallel_tool_calls, false);
   assert.equal((await runResponsesLiteRequest("gpt-6-luna-max")).parallel_tool_calls, false);
@@ -111,6 +122,7 @@ test("Catalog effort tiers follow the live Codex levels for GPT-6 models", () =>
   const withMax = ["low", "medium", "high", "xhigh", "max"];
   for (const provider of ["codex", "cx"]) {
     assert.deepEqual(extendCodexGpt56EffortValues(provider, "gpt-6-astra", base), withUltra);
+    assert.deepEqual(extendCodexGpt56EffortValues(provider, "gpt-6.1-sol", base), withUltra);
     assert.deepEqual(extendCodexGpt56EffortValues(provider, "gpt-6-sol", base), withUltra);
     assert.deepEqual(extendCodexGpt56EffortValues(provider, "gpt-6-luna-max", base), withMax);
   }
@@ -118,12 +130,14 @@ test("Catalog effort tiers follow the live Codex levels for GPT-6 models", () =>
   assert.deepEqual(extendCodexGpt56EffortValues("kiro", "gpt-6-sol", base), base);
 });
 
-test("VS Code reasoning metadata knows GPT-6 Sol and Luna efforts and defaults", () => {
+test("VS Code reasoning metadata knows GPT-6 Sol families and Luna efforts and defaults", () => {
   const model = (id: string) => ({ id, owned_by: "codex", capabilities: { reasoning: true } });
+  const sol61 = model("cx/gpt-6.1-sol");
   const sol = model("cx/gpt-6-sol");
   const luna = model("cx/gpt-6-luna");
   const solValues = reasoningMetadata.getReasoningEffortValues(sol);
   assert.deepEqual(solValues, ["low", "medium", "high", "xhigh", "max", "ultra"]);
+  assert.deepEqual(reasoningMetadata.getReasoningEffortValues(sol61), solValues);
   assert.deepEqual(reasoningMetadata.getReasoningEffortValues(luna), [
     "low",
     "medium",
@@ -135,6 +149,11 @@ test("VS Code reasoning metadata knows GPT-6 Sol and Luna efforts and defaults",
   for (const id of ["cx/gpt-6-astra", "cx/gpt-6-sol", "cx/gpt-6-luna"]) {
     assert.equal(reasoningMetadata.getDefaultReasoningEffort(model(id)), "medium", id);
   }
+  assert.equal(reasoningMetadata.getDefaultReasoningEffort(sol61), "low");
+  assert.equal(
+    reasoningMetadata.getReasoningVariantBaseModelId("cx/gpt-6.1-sol-ultra"),
+    "cx/gpt-6.1-sol"
+  );
   assert.equal(
     reasoningMetadata.inferSelectedReasoningEffort(model("cx/gpt-6-sol-ultra"), solValues),
     "ultra"
@@ -150,7 +169,12 @@ test("VS Code reasoning metadata knows GPT-6 Sol and Luna efforts and defaults",
 });
 
 test("Parenthesized Sol and Luna effort overrides keep the reasoning summary", () => {
-  for (const model of ["gpt-6-sol(ultra)", "gpt-6-sol(max)", "gpt-6-luna(max)"]) {
+  for (const model of [
+    "gpt-6.1-sol(ultra)",
+    "gpt-6-sol(ultra)",
+    "gpt-6-sol(max)",
+    "gpt-6-luna(max)",
+  ]) {
     const result = transform(model, { reasoning: { effort: "low", summary: "detailed" } });
     assert.equal(result.model, model.slice(0, model.indexOf("(")), model);
     assert.equal(result.reasoning.effort, "max", model);
@@ -158,7 +182,7 @@ test("Parenthesized Sol and Luna effort overrides keep the reasoning summary", (
   }
 });
 
-test("Chat-to-Codex translation preserves max reasoning for GPT-6 Sol and Luna", () => {
+test("Chat-to-Codex translation preserves max reasoning for GPT-6 Sol families and Luna", () => {
   for (const { model } of FAMILIES) {
     const translated = openaiToOpenAIResponsesRequest(
       model,
@@ -174,10 +198,11 @@ test("Chat-to-Codex translation preserves max reasoning for GPT-6 Sol and Luna",
   }
 });
 
-test("GPT-6 Sol and Luna Codex pricing and Fast multiplier match the credit rate card", () => {
+test("GPT-6 Sol families and Luna pricing and Fast multiplier match the credit rate card", () => {
   // Codex Standard credits per MTok (input / cached / output), at 25 credits per USD:
   // Sol 50 / 5 / 250, Luna 2.5 / 0.25 / 12.5. Fast is 2.5x Standard for both.
   const expected = {
+    "gpt-6.1-sol": { input: 2, cached: 0.1, output: 10 },
     "gpt-6-sol": { input: 2, cached: 0.2, output: 10 },
     "gpt-6-luna": { input: 0.1, cached: 0.01, output: 0.5 },
   };

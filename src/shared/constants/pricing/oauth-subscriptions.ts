@@ -31,6 +31,14 @@ const GPT_6_SOL_CODEX_PRICING = {
   reasoning: 10.0,
   cache_creation: 2.5,
 };
+// Codex Standard: 50 / 2.5 / 250 credits per MTok (cached input is half GPT-6 Sol's).
+const GPT_6_1_SOL_CODEX_PRICING = {
+  input: 2.0,
+  output: 10.0,
+  cached: 0.1,
+  reasoning: 10.0,
+  cache_creation: 2.5,
+};
 const GPT_6_LUNA_CODEX_PRICING = {
   input: 0.1,
   output: 0.5,
@@ -115,6 +123,13 @@ export const DEFAULT_PRICING_OAUTH = {
     "gpt-6-astra-high": GPT_6_ASTRA_CODEX_PRICING,
     "gpt-6-astra-medium": GPT_6_ASTRA_CODEX_PRICING,
     "gpt-6-astra-low": GPT_6_ASTRA_CODEX_PRICING,
+    "gpt-6.1-sol": GPT_6_1_SOL_CODEX_PRICING,
+    "gpt-6.1-sol-ultra": GPT_6_1_SOL_CODEX_PRICING,
+    "gpt-6.1-sol-max": GPT_6_1_SOL_CODEX_PRICING,
+    "gpt-6.1-sol-xhigh": GPT_6_1_SOL_CODEX_PRICING,
+    "gpt-6.1-sol-high": GPT_6_1_SOL_CODEX_PRICING,
+    "gpt-6.1-sol-medium": GPT_6_1_SOL_CODEX_PRICING,
+    "gpt-6.1-sol-low": GPT_6_1_SOL_CODEX_PRICING,
     "gpt-6-sol": GPT_6_SOL_CODEX_PRICING,
     "gpt-6-sol-ultra": GPT_6_SOL_CODEX_PRICING,
     "gpt-6-sol-max": GPT_6_SOL_CODEX_PRICING,
