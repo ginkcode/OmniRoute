@@ -39,6 +39,24 @@ test("build.yml's known-good heap budget is 12288 MB", () => {
   assert.match(buildYml, /OMNIROUTE_BUILD_MEMORY_MB:\s*"12288"/);
 });
 
+// Local `docker compose build` (and bare `docker build .`) passes no build args,
+// so it gets the Dockerfile default. At 6144 MB it died with the same
+// "Ineffective mark-compacts near heap limit" OOM during the webpack pass
+// (~5.9 GB live heap). The default must match the heap CI proves sufficient.
+test("the Dockerfile's default build heap matches the 12288 MB CI budget", () => {
+  const dockerfile = readFileSync(
+    fileURLToPath(new URL("../../Dockerfile", import.meta.url)),
+    "utf8"
+  );
+  const match = dockerfile.match(/^ARG OMNIROUTE_BUILD_MEMORY_MB=(\d+)$/m);
+  assert.ok(match, "Dockerfile must declare ARG OMNIROUTE_BUILD_MEMORY_MB");
+  assert.ok(
+    Number(match![1]) >= 12288,
+    `Dockerfile build heap default ${match![1]} MB is below the 12288 MB the webpack pass needs; ` +
+      "local `docker compose build` OOMs with no build args"
+  );
+});
+
 test("every docker-publish.yml build-push-action step raises the V8 heap ceiling past the Dockerfile's 6144 MB default", () => {
   const buildArgBlocks = [...workflow.matchAll(/build-args:\s*\|\n((?: {12}\S.*\n)+)/g)].map(
     (m) => m[1]

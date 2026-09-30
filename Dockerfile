@@ -171,7 +171,11 @@ ENV OMNIROUTE_MITM_STUB=1
 # (OMNIROUTE_MEMORY_MB). Override: `--build-arg OMNIROUTE_BUILD_MEMORY_MB=6144`.
 # Default raised 4096 → 6144 (#10060): the Next 16 production pass on a codebase
 # this size intermittently OOMs a build worker at 4 GB on memory-tight hosts.
-ARG OMNIROUTE_BUILD_MEMORY_MB=6144
+# Raised 6144 → 12288: the webpack pass now peaks ~5.9 GB of live heap and a
+# plain `docker compose build` (no build args) died with "Ineffective
+# mark-compacts near heap limit". 12288 matches build.yml / docker-publish.yml.
+# This is a ceiling, not a reservation — hosts that need less never touch it.
+ARG OMNIROUTE_BUILD_MEMORY_MB=12288
 ENV NODE_OPTIONS="--max-old-space-size=${OMNIROUTE_BUILD_MEMORY_MB}"
 
 # Cap Next.js build worker pools. Next 16 defaults to `os.cpus().length - 1`
