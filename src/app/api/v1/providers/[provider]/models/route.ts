@@ -5,6 +5,7 @@ import { isServiceBackendPluginId } from "@/lib/services/serviceBackends";
 import { getRegistryEntry } from "@omniroute/open-sse/config/providerRegistry.ts";
 import { getProviderById, getProviderByAlias } from "@/shared/constants/providers";
 import { isCompatibleProviderConnectionId } from "@/shared/utils/compatibleProviderId";
+import { stripStaleEncodingHeaders } from "@omniroute/open-sse/utils/upstreamResponseHeaders.ts";
 
 /**
  * Handle CORS preflight
@@ -120,14 +121,11 @@ export async function GET(request: Request, { params }: { params: Promise<{ prov
     });
   }
 
-  // The body below is a re-serialized SUBSET of the unified catalog, so the upstream
-  // headers must not be forwarded verbatim: `catalogStringResponse` sets a
-  // `content-length` for the FULL catalog. Advertising that stale length on a much
-  // smaller body makes HTTP/2+HTTP/3 clients abort the stream mid-response
-  // (net::ERR_QUIC_PROTOCOL_ERROR behind an HTTP/3 proxy, as seen in Docker deploys).
-  const headers = new Headers(response.headers);
-  headers.delete("content-length");
-  headers.delete("content-encoding");
+  // Re-serialization changes the byte length, so the catalog's stale
+  // content-length/content-encoding/transfer-encoding must not ride onto this
+  // smaller body — a stale length makes the response never complete for the
+  // client (the dashboard model picker hangs on "loading" forever, #14092).
+  const headers = stripStaleEncodingHeaders(response.headers);
 
   return Response.json(
     {

@@ -783,10 +783,9 @@ async function callVisionModelSingle(
       // When routing through OmniRoute's own API, omit the vision-bridge
       // guardrail on the sub-request to prevent infinite recursion.
       // Use a real DB-backed key for self-loop (sk_omniroute is rejected by
-      // REQUIRE_API_KEY instances with 401 "Missing API key").
-      const requestApiKey = selfLoop
-        ? await resolveSelfLoopApiKey()
-        : resolvedApiKey || (await resolveSelfLoopApiKey());
+      // REQUIRE_API_KEY instances with 401 "Missing API key"). Direct endpoints
+      // receive only their provider credential, never an OmniRoute credential.
+      const requestApiKey = selfLoop ? await resolveSelfLoopApiKey() : resolvedApiKey;
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
         // Explicit JSON opt-in: without `Accept: application/json` OmniRoute's
@@ -795,23 +794,23 @@ async function callVisionModelSingle(
         // parse (`Unexpected token 'd'`), failing the whole vision-bridge
         // describe path. Pair with `stream: false` below.
         Accept: "application/json",
-        Authorization: `Bearer ${requestApiKey}`,
       };
+      if (requestApiKey) headers.Authorization = `Bearer ${requestApiKey}`;
       if (selfLoop) {
         headers["x-omniroute-disabled-guardrails"] = routeThroughOmniRoute
           ? "vision-bridge,video-bridge"
           : "vision-bridge";
+        // The compression pipeline must not touch the image payload of the
+        // self-loop describe call (stacked RTK/Caveman can mangle data URIs).
+        headers["x-omniroute-compression"] = "off";
         // Internal self-loop sub-request: the parent request already holds the
         // single heavyweight admission lease (`CHAT_MAX_HEAVY_IN_FLIGHT=1`), so a
         // large base64-image describe body would be rejected with 503
-        // `chat_admission_busy` before it is described. The route only honors
+        // `chat_admission_busy` before it is described.
         // Keep API authentication and admission identity separate. The private
         // process-local marker proves this is an own-listener hop and is the only
         // admission-bypass credential; Authorization remains a real DB/env key.
         headers[SELF_HOP_HEADER] = ownListenerSelfHopToken();
-        // The compression pipeline must not touch the image payload of the
-        // self-loop describe call (stacked RTK/Caveman can mangle data URIs).
-        headers["x-omniroute-compression"] = "off";
       }
 
       response = await fetchImpl(`${baseUrl}/chat/completions`, {

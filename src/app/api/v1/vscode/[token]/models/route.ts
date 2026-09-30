@@ -26,6 +26,7 @@ import {
 } from "@/app/api/v1/vscode/[token]/serviceTierVariants";
 import { getFamilyFirstPublishedModelId } from "@/app/api/v1/vscode/[token]/familyFirstModelIds";
 import { isUsableChatModel } from "@/app/api/v1/vscode/[token]/usableChatModel";
+import { filterUpstreamResponseHeaderEntries } from "@omniroute/open-sse/utils/upstreamResponseHeaders.ts";
 
 type CatalogModelEntry = {
   id?: string;
@@ -331,16 +332,16 @@ export async function getVscodeModelsCatalogResponse(
 ): Promise<VscodeModelsCatalogResponse> {
   const response = await getUnifiedModelsResponse(request);
   const body = (await response.json()) as { data?: CatalogModelEntry[] };
-  // Callers re-serialize a filtered/enriched subset of this body, so the upstream
-  // `content-length` (set for the FULL catalog by catalogStringResponse) would be a lie
-  // and makes HTTP/2+HTTP/3 clients abort the stream. Drop the body-framing headers.
-  const forwardedHeaders = Object.fromEntries(response.headers.entries());
-  delete forwardedHeaders["content-length"];
-  delete forwardedHeaders["content-encoding"];
+  // Consumers re-serialize `body` (data filtered/expanded), so the catalog's
+  // stale content-length/content-encoding/transfer-encoding no longer matches
+  // — forwarding it hangs the client (#14092).
+  const headers = Object.fromEntries(
+    filterUpstreamResponseHeaderEntries(response.headers.entries())
+  );
   return {
     status: response.status,
     headers: {
-      ...forwardedHeaders,
+      ...headers,
       ...VSCODE_CATALOG_CACHE_HEADERS,
     },
     body: {

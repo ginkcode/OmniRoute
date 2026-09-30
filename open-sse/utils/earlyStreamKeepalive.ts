@@ -312,10 +312,16 @@ export function __getDeadlineTokenRegistrySizeForTests(): number {
  *
  * The wrapped request MUST be the one the route hands downstream (admission,
  * body parse, `handleChat`): the handler snapshots `request.signal` after
- * admission, so wrapping after that point would not propagate. Rebuild from the
- * request's public fields rather than passing it as the `Request` constructor's
- * input: Next.js may provide a Proxy-wrapped Request, which Node 24's undici cannot
- * clone because the Proxy does not own the native Request's private `#state`.
+ * admission, so wrapping after that point would not propagate. Rebuilt
+ * field-by-field (`new Request(request.url, { method, headers, body, signal,
+ * duplex: "half" })`) — NOT via `new Request(request, …)`: under the Next.js
+ * App Router the inbound request is a Proxy, and passing it as the
+ * constructor input makes undici read `#state` on the proxy receiver, which
+ * ECMAScript mandates to throw. Field reads below go through the proxy get
+ * trap and are safe. Note: unlike the constructor-input form, the original
+ * request's `bodyUsed` stays `false` here; its stream is still transferred,
+ * so reading it afterwards fails regardless — do not reuse the input object
+ * after wrapping.
  *
  * Controller recovery downstream (`getDeadlineController`) is two-layered:
  * the combined signal object (fast path — same object when nothing rebuilds),
@@ -339,11 +345,26 @@ export function withDeadlineSignal(request: Request): {
   // admission rebuilds, which both copy headers but mint new signal objects.
   const token = `dl-${Date.now().toString(36)}-${(deadlineTokenSeq += 1)}`;
   headers.set(DEADLINE_TOKEN_HEADER, token);
+  // Build the wrapped request field-by-field. Passing the incoming request
+  // object itself as the constructor input is NOT safe under the Next.js App
+  // Router runtime: for `dynamic: "auto"` routes Next hands handlers a Proxy
+  // around the real request (app-route runtime), and the undici constructor
+  // reads `input.#state` with that proxy as the receiver. ECMAScript gives a
+  // Proxy no [[PrivateFieldValues]], so the access throws
+  // "TypeError: Cannot read private member #state from an object whose class
+  // did not declare it" (observed 2026-09-26 as every request on the
+  // /v1/chat/completions, /v1/messages and /v1/responses routes answering
+  // HTTP 500 after #14808 wired this wrapper into those routes). Property
+  // reads (url/method/body/headers) go through the proxy get trap with
+  // receiver = target and are safe; only the constructor's private-field
+  // path breaks. Do not "simplify" back to `new Request(request, ...)`.
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   const wrappedReq = new Request(request.url, {
     method: request.method,
     headers,
     signal: combined,
+    // `duplex` is an undici extension absent from the DOM-lib RequestInit and
+    // is required whenever `body` is a ReadableStream. GET/HEAD must not carry it.
     ...(hasBody ? { body: request.body, duplex: "half" } : {}),
   } as RequestInit & { duplex?: "half" });
   deadlineControllers.set(combined, deadlineController);
