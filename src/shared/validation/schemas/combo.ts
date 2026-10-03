@@ -194,6 +194,10 @@ export const comboRuntimeConfigSchema = z
     // wins over the global `settings.disableSessionStickiness` fallback. Default false
     // preserves the #3825 prompt-cache/504 fix.
     disableSessionStickiness: z.boolean().optional(),
+    // Utilisation (percent) at which a sticky connection is released so the combo
+    // strategy can pick another account. Wins over the global
+    // `settings.sessionStickinessReleasePercent`; unset = 50.
+    sessionStickinessReleasePercent: z.coerce.number().int().min(1).max(100).optional(),
     stickyWeightedLimit: z.coerce.number().int().min(0).max(1000).optional(),
     healthCheckEnabled: z.boolean().optional(),
     healthCheckTimeoutMs: z.coerce.number().int().min(100).max(30000).optional(),

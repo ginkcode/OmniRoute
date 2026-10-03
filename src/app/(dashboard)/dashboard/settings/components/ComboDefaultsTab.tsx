@@ -99,6 +99,7 @@ export default function ComboDefaultsTab() {
     maxMessagesForSummary: 30,
     stickyRoundRobinLimit: 3,
     disableSessionStickiness: false,
+    sessionStickinessReleasePercent: 50,
     resetAwareQuotaCacheTtlMs: 0,
     resetAwareQuotaCacheMaxStaleMs: 0,
     zeroLatencyOptimizationsEnabled: false,
@@ -175,6 +176,8 @@ export default function ComboDefaultsTab() {
             settingsData.disableSessionStickiness ??
             comboData.comboDefaults?.disableSessionStickiness ??
             prev.disableSessionStickiness,
+          sessionStickinessReleasePercent:
+            settingsData.sessionStickinessReleasePercent ?? prev.sessionStickinessReleasePercent,
         }));
         if (comboData.providerOverrides) {
           setProviderOverrides(sanitizeProviderOverrides(comboData.providerOverrides));
@@ -222,14 +225,19 @@ export default function ComboDefaultsTab() {
   const saveComboDefaults = async () => {
     setSaving(true);
     try {
-      const { stickyRoundRobinLimit, disableSessionStickiness, ...comboDefaultsPayload } =
-        comboDefaults;
+      const {
+        stickyRoundRobinLimit,
+        disableSessionStickiness,
+        sessionStickinessReleasePercent,
+        ...comboDefaultsPayload
+      } = comboDefaults;
       const settingsPatch = {
         ...toGlobalRoutingPatch(comboDefaults.strategy, stickyRoundRobinLimit),
         sessionAffinityTtlMs,
         // #6168: global session-stickiness opt-out — persisted top-level on settings
         // (mirrors stickyRoundRobinLimit) so combo.ts resolution reads settings.disableSessionStickiness.
         disableSessionStickiness: disableSessionStickiness === true,
+        sessionStickinessReleasePercent,
         promptCacheAffinityEnabled,
       };
 
@@ -789,6 +797,39 @@ export default function ComboDefaultsTab() {
                   disableSessionStickiness: prev.disableSessionStickiness !== true,
                 }))
               }
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">
+                {translateOrFallback(
+                  t,
+                  "sessionStickinessReleasePercent",
+                  "Stickiness release (% used)"
+                )}
+              </p>
+              <p className="text-xs text-text-muted">
+                {translateOrFallback(
+                  t,
+                  "sessionStickinessReleasePercentDesc",
+                  "A conversation stays pinned to its connection until that account's 5h or weekly usage reaches this percent, then the combo strategy picks again. Lower values balance accounts sooner; higher values keep more prompt-cache hits. Per-combo overrides take precedence."
+                )}
+              </p>
+            </div>
+            <Input
+              type="number"
+              min="1"
+              max="100"
+              value={comboDefaults.sessionStickinessReleasePercent ?? 50}
+              onChange={(e) => {
+                const percent = parseInt(e.target.value);
+                setComboDefaults((prev) => ({
+                  ...prev,
+                  sessionStickinessReleasePercent:
+                    Number.isFinite(percent) && percent >= 1 && percent <= 100 ? percent : 50,
+                }));
+              }}
+              className="w-20 text-center"
             />
           </div>
         </div>

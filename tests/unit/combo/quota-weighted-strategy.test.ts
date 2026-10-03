@@ -90,7 +90,7 @@ async function withFrozenClock<T>(fn: () => Promise<T>): Promise<T> {
 
 function quotaAt(percentUsed: number, extra: Record<string, unknown> = {}) {
   // Far-future resets keep reset-pressure near 0 so score tracks remaining.
-  // A 1-day weekly reset inverts that (more-used accounts score higher).
+  // A 1-day weekly reset flattens that (usage no longer separates accounts).
   return {
     used: percentUsed * 100,
     total: 100,

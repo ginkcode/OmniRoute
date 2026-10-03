@@ -13,13 +13,13 @@
  *   Using only the first message gives a stable key that does not change as
  *   the conversation grows, yet still identifies the conversation reliably.
  * • Headroom gate: before reusing the sticky connection we re-check that its
- *   headroom (= 1 − max(util_5h, util_7d)) is above STICKINESS_HEADROOM_THRESHOLD
- *   (0.15). Below this threshold the connection is considered saturated and the
- *   session is rebound to whatever the normal ordering picks.
- *   Rationale for 0.15: empirically a connection at >85 % utilisation is within
- *   one burst of hitting rate limits, so the cache benefit no longer outweighs
- *   the cost of sticking to a degraded connection. The value matches the soft-
- *   penalty zone used elsewhere in the quota-share engine.
+ *   headroom (= 1 − max(util_5h, util_7d)) is above the release threshold
+ *   (default STICKINESS_HEADROOM_THRESHOLD = 0.5, i.e. release at 50 % used).
+ *   At or below it the session is rebound to whatever the normal ordering picks.
+ *   The threshold used to be 0.15 (85 % used), which held a conversation on one
+ *   account long after its siblings had more quota and defeated balancing
+ *   strategies such as reset-aware. Operators tune it per combo or globally via
+ *   `sessionStickinessReleasePercent` (see resolveStickinessHeadroomThreshold).
  * • Fail-open: any error (no body, no messages, hash failure, saturation fetch
  *   failure) falls back to the normal target ordering without throwing.
  * • Storage: in-memory Map with a TTL (15 min, aligned with sessionManager.ts).
@@ -57,13 +57,15 @@ import type { ResolvedComboTarget } from "./types.ts";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
+/** Default utilisation (percent) at which a sticky connection is released. */
+const DEFAULT_STICKINESS_RELEASE_PERCENT = 50;
+
 /**
- * Minimum headroom for a sticky connection to be reused.
- * A connection at >85 % utilisation is within one burst of rate-limiting;
- * the cache benefit no longer justifies staying on a degraded connection.
- * Matches the soft-penalty zone used in the broader quota-share engine.
+ * Default minimum headroom for a sticky connection to be reused. Once an
+ * account is half spent, keeping the conversation there costs more balance
+ * than the prompt-cache saves.
  */
-export const STICKINESS_HEADROOM_THRESHOLD = 0.15;
+export const STICKINESS_HEADROOM_THRESHOLD = (100 - DEFAULT_STICKINESS_RELEASE_PERCENT) / 100;
 
 /** TTL aligned with sessionManager.ts SESSION_TTL_MS (15 min). */
 const TTL_MS = 15 * 60 * 1000;
@@ -85,9 +87,7 @@ interface StickyEntry {
  * Injectable saturation fetcher seam (for unit tests).
  * Returns HeadroomSaturation or undefined when unknown.
  */
-export type SaturationFetcher = (
-  connectionId: string
-) => Promise<HeadroomSaturation | undefined>;
+export type SaturationFetcher = (connectionId: string) => Promise<HeadroomSaturation | undefined>;
 
 // ─── Saturation fetcher seam ─────────────────────────────────────────────────
 
@@ -187,9 +187,7 @@ export type QuotaExhaustionChecker = (connectionId: string) => boolean;
 let _quotaExhaustionOverride: QuotaExhaustionChecker | null = null;
 
 /** Test-only: inject the quota-exhaustion checker; pass null to restore default. */
-export function __setStickinessQuotaCheckerForTests(
-  checker: QuotaExhaustionChecker | null
-): void {
+export function __setStickinessQuotaCheckerForTests(checker: QuotaExhaustionChecker | null): void {
   _quotaExhaustionOverride = checker;
 }
 
@@ -439,6 +437,34 @@ export function resolveDisableSessionStickiness(
   return settings?.disableSessionStickiness === true;
 }
 
+function parseReleasePercent(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const percent = Number(value);
+  return Number.isFinite(percent) && percent >= 1 && percent <= 100 ? percent : null;
+}
+
+/**
+ * Resolve the headroom a sticky connection must keep to stay pinned.
+ *
+ * Precedence (mirrors resolveDisableSessionStickiness):
+ *   per-combo `config.sessionStickinessReleasePercent` →
+ *   global `settings.sessionStickinessReleasePercent` →
+ *   DEFAULT_STICKINESS_RELEASE_PERCENT (50).
+ *
+ * The setting is the utilisation (1-100) at which the pin is released; the
+ * returned value is the matching headroom threshold ((100 − percent) / 100).
+ */
+export function resolveStickinessHeadroomThreshold(
+  config: Record<string, unknown> | null | undefined,
+  settings: Record<string, unknown> | null | undefined
+): number {
+  const percent =
+    parseReleasePercent(config?.sessionStickinessReleasePercent) ??
+    parseReleasePercent(settings?.sessionStickinessReleasePercent) ??
+    DEFAULT_STICKINESS_RELEASE_PERCENT;
+  return (100 - percent) / 100;
+}
+
 // ─── Core: apply stickiness to an ordered target list ────────────────────────
 
 export interface ApplyStickinessResult {
@@ -469,14 +495,18 @@ export interface ApplyStickinessResult {
  * @param orderedTargets  Targets already ordered by the combo strategy.
  * @param messages        Request body.messages.
  * @param namespace       Combo identity that owns this sticky binding.
+ * @param options         `headroomThreshold` from resolveStickinessHeadroomThreshold
+ *                        (defaults to STICKINESS_HEADROOM_THRESHOLD).
  * @returns               Result with (possibly reordered) targets.
  */
 export async function applySessionStickiness(
   orderedTargets: ResolvedComboTarget[],
   messages: Array<{ role?: string; content?: unknown }> | null | undefined,
-  namespace?: string
+  namespace?: string,
+  options: { headroomThreshold?: number } = {}
 ): Promise<ApplyStickinessResult> {
   const noOp: ApplyStickinessResult = { targets: orderedTargets, messageHash: null, stuck: false };
+  const headroomThreshold = options.headroomThreshold ?? STICKINESS_HEADROOM_THRESHOLD;
 
   try {
     if (orderedTargets.length <= 1) return noOp;
@@ -521,7 +551,7 @@ export async function applySessionStickiness(
     const headroom = computeHeadroom(sat);
 
     if (
-      headroom <= STICKINESS_HEADROOM_THRESHOLD ||
+      headroom <= headroomThreshold ||
       isStickyConnectionTerminallyUnhealthy(connHealth, Date.now()) ||
       quotaExhausted
     ) {

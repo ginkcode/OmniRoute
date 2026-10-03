@@ -341,6 +341,9 @@ export const updateSettingsSchema = z.object({
     }),
   // #6168: global session-stickiness opt-out (per-combo config overrides this).
   disableSessionStickiness: z.boolean().optional(),
+  // Global utilisation (percent) at which a sticky connection is released (per-combo
+  // config overrides this; unset = 50).
+  sessionStickinessReleasePercent: z.coerce.number().int().min(1).max(100).optional(),
   // Global connection-aware expansion fallback for group-B combo strategies is opt-in.
   connectionAwareExpansion: z.boolean().optional(),
   /** Keep eligible combo targets close to the provider-side prompt cache. */

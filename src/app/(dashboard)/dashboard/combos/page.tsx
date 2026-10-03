@@ -210,6 +210,8 @@ const ADVANCED_FIELD_HELP_FALLBACK = {
     "Round-robin sticky batch size: consecutive successful requests sent to one target before rotating to the next. Empty inherits the global Sticky Limit setting; 1 disables batching (pure one-request rotation).",
   stickyWeightedLimit:
     "Weighted sticky batch size: consecutive successful requests sent to the selected weighted target before drawing again. Empty or 1 keeps the current per-request weighted draw.",
+  sessionStickinessReleasePercent:
+    "A conversation stays pinned to its connection until that account's 5h or weekly usage reaches this percent, then the strategy picks again. Lower values balance accounts sooner; higher values keep more prompt-cache hits. Empty inherits the global default (50%).",
   failoverBeforeRetry:
     "When enabled, a 429 from the upstream triggers immediate target failover instead of retrying the same URL first.",
   maxSetRetries:
@@ -4461,6 +4463,37 @@ function ComboFormModal({
                           {getI18nOrFallback(t, "sessionStickinessDisabled", "Stickiness off")}
                         </option>
                       </select>
+                    </div>
+                    <div>
+                      <FieldLabelWithHelp
+                        label={getI18nOrFallback(
+                          t,
+                          "sessionStickinessReleasePercent",
+                          "Stickiness release (% used)"
+                        )}
+                        help={getI18nOrFallback(
+                          t,
+                          "advancedHelp.sessionStickinessReleasePercent",
+                          ADVANCED_FIELD_HELP_FALLBACK.sessionStickinessReleasePercent
+                        )}
+                        showHelp={!isExpertMode}
+                      />
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={config.sessionStickinessReleasePercent ?? ""}
+                        placeholder={getI18nOrFallback(t, "stickyLimitInherit", "inherit")}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            sessionStickinessReleasePercent: e.target.value
+                              ? Number(e.target.value)
+                              : undefined,
+                          })
+                        }
+                        className="w-full text-xs py-1.5 px-2 rounded border border-black/10 dark:border-white/10 bg-transparent focus:border-primary focus:outline-none"
+                      />
                     </div>
                   </div>
                   {strategy === "context-relay" && (

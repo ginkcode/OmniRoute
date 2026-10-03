@@ -308,9 +308,19 @@ function scoreQuotaWindow(
   resetPressureWeight: number
 ): number {
   const normalizedRemaining = clamp01(remaining);
-  const resetUrgency = getResetUrgency(resetAt, windowMs);
-  const resetPressure = resetUrgency * (1 - normalizedRemaining);
-  return remainingWeight * normalizedRemaining + resetPressureWeight * resetPressure;
+  const pressure = resetPressureWeight * getResetUrgency(resetAt, windowMs);
+  // Reset pressure is meant to spend quota that expires soon, never to reward
+  // usage itself. Uncapped, `pressure * used` outgrew `remainingWeight` once a
+  // weekly reset was under ~4.6 days out, so every request raised the serving
+  // account's score and the strategy drained one account until it errored.
+  // Only the part up to remainingWeight scales with usage; the excess is a flat
+  // urgency bonus, so the score never rises as an account drains.
+  const usagePressure = Math.min(pressure, remainingWeight);
+  return (
+    remainingWeight * normalizedRemaining +
+    usagePressure * (1 - normalizedRemaining) +
+    (pressure - usagePressure)
+  );
 }
 
 /**

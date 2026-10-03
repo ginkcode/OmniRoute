@@ -83,6 +83,7 @@ import {
   clearStickyBindingsForCombo,
   normalizeStickinessMessages,
   resolveDisableSessionStickiness,
+  resolveStickinessHeadroomThreshold,
   type ApplyStickinessResult,
 } from "./sessionStickiness.ts";
 import { applyRequestTagRouting } from "./autoStrategy.ts";
@@ -535,7 +536,13 @@ async function applyContinuityFilters(
         // #7270: normalize both wire shapes (.messages / Responses-API .input) so the
         // stickiness key is derivable on the /v1/responses surface, not just Chat Completions.
         normalizeStickinessMessages(body as { messages?: unknown; input?: unknown }),
-        combo.name
+        combo.name,
+        {
+          headroomThreshold: resolveStickinessHeadroomThreshold(
+            config as Record<string, unknown> | null | undefined,
+            settings as Record<string, unknown> | null | undefined
+          ),
+        }
       );
   let orderedTargets = sticky.targets;
   if (!cacheStrategyAffinityApplied) {

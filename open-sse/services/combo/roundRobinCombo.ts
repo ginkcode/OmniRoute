@@ -38,6 +38,7 @@ import {
   recordStickyBinding,
   clearStickyBindingsForCombo,
   resolveDisableSessionStickiness,
+  resolveStickinessHeadroomThreshold,
 } from "./sessionStickiness.ts";
 import { makeConnectionConcurrencyResolver } from "./concurrencyCaps.ts";
 import { orderTargetsByEvalScores } from "../evalRouting.ts";
@@ -385,7 +386,13 @@ export async function handleRoundRobinCombo({
         // #7270: normalize both wire shapes (.messages / Responses-API .input) so RR
         // stickiness engages on the /v1/responses surface, not just Chat Completions.
         normalizeStickinessMessages(body as { messages?: unknown; input?: unknown }),
-        combo.name
+        combo.name,
+        {
+          headroomThreshold: resolveStickinessHeadroomThreshold(
+            config as Record<string, unknown> | null | undefined,
+            settings as Record<string, unknown> | null | undefined
+          ),
+        }
       );
   const rrAffinity = applyPromptCacheAffinity(
     filteredTargets,

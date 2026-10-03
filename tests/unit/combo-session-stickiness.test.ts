@@ -37,7 +37,9 @@ const {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function makeTarget(connectionId: string): import("../../open-sse/services/combo/types.ts").ResolvedComboTarget {
+function makeTarget(
+  connectionId: string
+): import("../../open-sse/services/combo/types.ts").ResolvedComboTarget {
   return {
     kind: "model",
     stepId: `step-${connectionId}`,
@@ -275,7 +277,7 @@ test("single target list → no-op, no sticky lookup performed", async () => {
 });
 
 test("STICKINESS_HEADROOM_THRESHOLD: connection below threshold is NOT reused", async () => {
-  // headroom = 1 − 0.9 = 0.1, clearly below threshold 0.15
+  // headroom = 1 − 0.9 = 0.1, clearly below threshold 0.5
   injectSat({ util5h: 0.9, util7d: 0.0 });
   const targets = [makeTarget("conn-A"), makeTarget("conn-B")];
   const messages = [{ role: "user", content: "Below threshold" }];
@@ -287,8 +289,8 @@ test("STICKINESS_HEADROOM_THRESHOLD: connection below threshold is NOT reused", 
 });
 
 test("connection just above threshold IS reused", async () => {
-  // headroom = 1 − 0.84 = 0.16 > 0.15
-  injectSat({ util5h: 0.84, util7d: 0.0 });
+  // headroom = 1 − 0.49 = 0.51 > 0.5
+  injectSat({ util5h: 0.49, util7d: 0.0 });
   const targets = [makeTarget("conn-A"), makeTarget("conn-B")];
   const messages = [{ role: "user", content: "Above threshold" }];
   const hash = deriveMessageHash(messages)!;
