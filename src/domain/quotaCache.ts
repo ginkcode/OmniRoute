@@ -978,15 +978,26 @@ async function refreshEntry(entry: QuotaCacheEntry) {
 
   try {
     const connection = await getCachedProviderConnectionById(entry.connectionId);
-    if (!connection || connection.authType !== "oauth" || !connection.isActive) {
+    if (!connection || !connection.isActive) {
       cache.delete(entry.connectionId);
       return;
     }
 
+    // API-key connections refresh too: many (NanoGPT, GLM, Kimi, ...) expose a
+    // usage API. Dropping them here erased their quota five minutes after each
+    // sync, so routing could not see an API-key account draining.
     const proxyInfo = await resolveProxyForConnection(entry.connectionId);
     const usage = await runWithProxyContext(proxyInfo?.proxy || null, () =>
       getUsageForProvider(connection)
     );
+
+    const hasQuotas =
+      !!usage?.quotas && typeof usage.quotas === "object" && Object.keys(usage.quotas).length > 0;
+    if (!hasQuotas && connection.authType !== "oauth") {
+      // No usage API for this key: nothing can refresh the entry, so expire it.
+      cache.delete(entry.connectionId);
+      return;
+    }
 
     if (usage?.quotas) {
       setQuotaCache(

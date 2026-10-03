@@ -272,6 +272,7 @@ function cacheKey(connectionId: string, provider: string, dim: DimensionSpec): s
 export function _clearSaturationCache(): void {
   _cache.clear();
   _inflight.clear();
+  _genericUsage.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -475,7 +476,11 @@ async function fetchAnthropicSaturation(connectionId: string, dim: DimensionSpec
  * complement/fallback is unit-testable without the open-sse usage service.
  * Defaults to getUsageForProvider; pass null to restore.
  */
-type GenericUsageFetcher = (connectionId: string, provider: string) => Promise<unknown>;
+type GenericUsageFetcher = (
+  connectionId: string,
+  provider: string,
+  connection?: Record<string, unknown>
+) => Promise<unknown>;
 let _genericUsageFetcherOverride: GenericUsageFetcher | null = null;
 
 /** Test-only: inject the generic usage fetcher; pass null to restore. */
@@ -483,18 +488,59 @@ export function __setGenericUsageFetcherForTests(fetcher: GenericUsageFetcher | 
   _genericUsageFetcherOverride = fetcher;
 }
 
-async function defaultGenericUsageFetch(connectionId: string, provider: string): Promise<unknown> {
+async function defaultGenericUsageFetch(
+  connectionId: string,
+  provider: string,
+  connection?: Record<string, unknown>
+): Promise<unknown> {
+  // Usage fetchers authenticate with the connection's apiKey/accessToken. A bare
+  // { id, provider } stub made every one of them answer "key not available", so
+  // generic saturation read 0 for every account and stickiness never released.
+  const conn =
+    connection ??
+    (await (await import("@/lib/db/readCache")).getCachedProviderConnectionById(connectionId));
+  if (!conn) return null;
   const mod = await import("@omniroute/open-sse/services/usage");
-  const conn = { id: connectionId, provider } as Parameters<typeof mod.getUsageForProvider>[0];
-  return mod.getUsageForProvider(conn);
+  return mod.getUsageForProvider({ ...conn, id: connectionId, provider } as Parameters<
+    typeof mod.getUsageForProvider
+  >[0]);
 }
 
-async function fetchGenericSaturation(connectionId: string, provider: string): Promise<number> {
+// One usage read per connection per TTL: the generic result does not depend on
+// the requested window, so the 5h and weekly lookups must not each hit upstream.
+const _genericUsage = boundedMap<Promise<unknown>>(
+  "saturation-generic-usage",
+  4096,
+  "ttl",
+  CACHE_TTL_MS
+);
+
+function readGenericUsage(
+  connectionId: string,
+  provider: string,
+  connection?: Record<string, unknown>
+): Promise<unknown> {
+  const key = `${provider}:${connectionId}`;
+  const cached = _genericUsage.get(key);
+  if (cached) return cached;
+  const fetcher = _genericUsageFetcherOverride ?? defaultGenericUsageFetch;
+  const pending = fetcher(connectionId, provider, connection);
+  _genericUsage.set(key, pending);
+  pending.catch(() => {
+    if (_genericUsage.get(key) === pending) _genericUsage.delete(key);
+  });
+  return pending;
+}
+
+async function fetchGenericSaturation(
+  connectionId: string,
+  provider: string,
+  connection?: Record<string, unknown>
+): Promise<number> {
   // 1. Real usage percent is authoritative when present (a provider that
   //    actually reports utilization beats the burst-window token headers).
   try {
-    const fetcher = _genericUsageFetcherOverride ?? defaultGenericUsageFetch;
-    const result = await fetcher(connectionId, provider);
+    const result = await readGenericUsage(connectionId, provider, connection);
     if (result && typeof result === "object") {
       const obj = result as Record<string, unknown>;
 
@@ -567,7 +613,7 @@ export async function getSaturation(
           value = await fetchAnthropicSaturation(connectionId, dim);
           break;
         default:
-          value = await fetchGenericSaturation(connectionId, provider);
+          value = await fetchGenericSaturation(connectionId, provider, connection);
           break;
       }
     } catch (err) {
