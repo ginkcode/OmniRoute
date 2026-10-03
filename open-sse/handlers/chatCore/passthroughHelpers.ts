@@ -160,6 +160,44 @@ export function redactPassthroughThinkingSignatures(
   return messages;
 }
 
+function isUnsignedThinkingBlock(block: unknown): boolean {
+  if (!isThinkingBlock(block)) return false;
+  const record = block as { type?: unknown; signature?: unknown; data?: unknown };
+  const proof = record.type === "redacted_thinking" ? record.data : record.signature;
+  return typeof proof !== "string" || proof.trim().length === 0;
+}
+
+/**
+ * Drop `thinking` blocks with no signature (and `redacted_thinking` with no
+ * data) before a native Anthropic dispatch.
+ *
+ * Only Anthropic produces signed thinking. Turns served by a non-Anthropic combo
+ * leg (Codex, Gemini, GLM, Kimi, DeepSeek, ...) come back to the client as
+ * thinking blocks without a signature, and Anthropic rejects any replayed block
+ * with an empty signature: 400 "Invalid `signature` in `thinking` block". The
+ * signature recovery cannot help when that turn is the active tool cycle, which
+ * is exactly where a combo switches provider. Such blocks carry no reasoning
+ * Anthropic can read, so dropping them loses nothing, and Anthropic degrades a
+ * tool turn that lacks thinking gracefully. Signed blocks are left untouched
+ * (they must stay byte-identical). A message whose only content is unsigned
+ * thinking is kept as-is rather than emptied. Returns the original reference
+ * when nothing changes.
+ */
+export function dropUnsignedThinkingBlocks(messages: unknown): unknown {
+  if (!Array.isArray(messages)) return messages;
+  let changed = false;
+  const next = messages.map((message: MessageLike) => {
+    if (!message || message.role !== "assistant" || !Array.isArray(message.content)) {
+      return message;
+    }
+    const content = message.content.filter((block) => !isUnsignedThinkingBlock(block));
+    if (content.length === message.content.length || content.length === 0) return message;
+    changed = true;
+    return { ...message, content };
+  });
+  return changed ? next : messages;
+}
+
 type MessageLike = {
   role?: unknown;
   content?: unknown;

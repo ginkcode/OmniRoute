@@ -95,6 +95,7 @@ import {
   shouldUseNativeOpenAICompatibleResponsesPassthrough,
   stampNativeResponsesPassthroughBody,
   redactPassthroughThinkingSignatures,
+  dropUnsignedThinkingBlocks,
   stripClaudeRejectedTopLevelFields,
   isClaudeCodeSemanticPassthroughRequest,
 } from "./chatCore/passthroughHelpers.ts";
@@ -2491,6 +2492,11 @@ async function handleChatCoreInner({
         translatedBody.messages = redactPassthroughThinkingSignatures(
           translatedBody.messages,
           DEFAULT_THINKING_CLAUDE_SIGNATURE
+        ) as typeof translatedBody.messages;
+        // Turns served by a non-Anthropic combo leg replay as unsigned thinking,
+        // which Anthropic rejects with 400 "Invalid `signature` in `thinking` block".
+        translatedBody.messages = dropUnsignedThinkingBlocks(
+          translatedBody.messages
         ) as typeof translatedBody.messages;
 
         stripClaudeRejectedTopLevelFields(translatedBody, clientRawRequest?.headers);
