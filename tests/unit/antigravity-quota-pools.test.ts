@@ -41,8 +41,21 @@ function liveAccount() {
       "claude-opus-5-5-high": claudeQuota(),
       "claude-sonnet-5-5-low": claudeQuota(),
       "gpt-oss-120b-medium": claudeQuota(),
-      gemini_weekly: { used: 204, total: 1000, remainingPercentage: 79.6, resetAt: GEMINI_RESET },
-      claude_gpt_weekly: { used: 0, total: 1000, remainingPercentage: 100, resetAt: CLAUDE_RESET },
+      // The weekly fetcher labels rows with the upstream group name, which reads like a pool.
+      gemini_weekly: {
+        used: 204,
+        total: 1000,
+        remainingPercentage: 79.6,
+        resetAt: GEMINI_RESET,
+        displayName: "Gemini Models",
+      },
+      claude_gpt_weekly: {
+        used: 0,
+        total: 1000,
+        remainingPercentage: 100,
+        resetAt: CLAUDE_RESET,
+        displayName: "Claude and GPT models",
+      },
       credits: { remaining: 42 },
     },
   };
@@ -54,14 +67,14 @@ test("Antigravity models that share an upstream pool render as one row per pool"
   const quotas = utils.parseQuotaData("antigravity", liveAccount());
 
   assert.deepEqual(quotas.map(rowKey).sort(), [
-    "claude_gpt_models",
+    "claude_gpt_5h",
     "claude_gpt_weekly",
     "credits",
-    "gemini_models",
+    "gemini_5h",
     "gemini_weekly",
   ]);
 
-  const gemini = quotas.find((q) => q.name === "gemini_models");
+  const gemini = quotas.find((q) => q.name === "gemini_5h");
   assert.equal(gemini.remainingPercentage, 97.2);
   assert.equal(gemini.resetAt, GEMINI_RESET);
   assert.deepEqual(gemini.memberModelKeys, [
@@ -71,21 +84,35 @@ test("Antigravity models that share an upstream pool render as one row per pool"
     "gemini-3-flash",
   ]);
 
-  const claude = quotas.find((q) => q.name === "claude_gpt_models");
+  const claude = quotas.find((q) => q.name === "claude_gpt_5h");
   assert.equal(claude.remainingPercentage, 100);
   assert.deepEqual(claude.memberModelKeys, [
     "claude-opus-5-5-high",
     "claude-sonnet-5-5-low",
     "gpt-oss-120b-medium",
   ]);
+});
 
-  assert.equal(utils.formatQuotaLabel("gemini_models"), "Gemini Models");
-  assert.equal(utils.formatQuotaLabel("claude_gpt_models"), "Claude & GPT Models");
+test("pool rows and weekly rows carry distinct window labels", () => {
+  const quotas = utils.parseQuotaData("antigravity", liveAccount());
+  const label = (name: string) => {
+    const q = quotas.find((row) => row.name === name);
+    return q.displayName || utils.formatQuotaLabel(q.name);
+  };
+
+  assert.equal(label("gemini_5h"), "Gemini Models · 5h");
+  assert.equal(label("claude_gpt_5h"), "Claude and GPT Models · 5h");
+  assert.equal(label("gemini_weekly"), "Gemini Models · Weekly");
+  assert.equal(label("claude_gpt_weekly"), "Claude and GPT models · Weekly");
+  assert.equal(
+    new Set(quotas.map((q) => q.displayName || utils.formatQuotaLabel(q.name))).size,
+    quotas.length
+  );
 });
 
 test("the agy provider groups its per-model rows the same way", () => {
   const quotas = utils.parseQuotaData("agy", liveAccount());
-  assert.ok(quotas.some((q) => q.name === "gemini_models"));
+  assert.ok(quotas.some((q) => q.name === "gemini_5h"));
   assert.ok(!quotas.some((q) => q.modelKey === "gemini-3-flash"));
 });
 
@@ -94,11 +121,11 @@ test("a family whose models report different quotas keeps one row per model", ()
   data.quotas["gemini-3-flash"] = geminiQuota(40);
   const quotas = utils.parseQuotaData("antigravity", data);
 
-  assert.ok(!quotas.some((q) => q.name === "gemini_models"));
+  assert.ok(!quotas.some((q) => q.name === "gemini_5h"));
   assert.ok(quotas.some((q) => q.modelKey === "gemini-3-flash" && q.remainingPercentage === 40));
   assert.ok(quotas.some((q) => q.modelKey === "gemini-3.5-flash-lite"));
   // The Claude pool is unaffected by the Gemini split.
-  assert.ok(quotas.some((q) => q.name === "claude_gpt_models"));
+  assert.ok(quotas.some((q) => q.name === "claude_gpt_5h"));
 });
 
 test("a family with a single model keeps its own per-model row", () => {
@@ -111,7 +138,7 @@ test("a family with a single model keeps its own per-model row", () => {
 test("a pool row inherits the least-trusted quota source of its members", () => {
   const data = liveAccount();
   data.quotas["gemini-3-flash"] = { ...geminiQuota(), quotaSource: "fetchAvailableModels" };
-  const gemini = utils.parseQuotaData("antigravity", data).find((q) => q.name === "gemini_models");
+  const gemini = utils.parseQuotaData("antigravity", data).find((q) => q.name === "gemini_5h");
   assert.equal(gemini.quotaSource, "fetchAvailableModels");
 });
 
@@ -128,8 +155,8 @@ test("hiding a model removes it from its pool; hiding every member removes the p
   });
   const visible = utils.filterHiddenModelQuotas("antigravity", quotas, hidden);
 
-  assert.ok(!visible.some((q) => q.name === "gemini_models"));
-  const claude = visible.find((q) => q.name === "claude_gpt_models");
+  assert.ok(!visible.some((q) => q.name === "gemini_5h"));
+  const claude = visible.find((q) => q.name === "claude_gpt_5h");
   assert.deepEqual(claude.memberModelKeys, ["claude-opus-5-5-high", "claude-sonnet-5-5-low"]);
   assert.ok(visible.some((q) => q.name === "gemini_weekly"));
 });
@@ -141,6 +168,6 @@ test("cutoff windows expand pool rows back into the per-model keys routing enfor
   assert.ok(keys.includes("gemini-3-flash"));
   assert.ok(keys.includes("gpt-oss-120b-medium"));
   assert.ok(keys.includes("gemini_weekly"));
-  assert.ok(!keys.includes("gemini_models"));
-  assert.ok(!keys.includes("claude_gpt_models"));
+  assert.ok(!keys.includes("gemini_5h"));
+  assert.ok(!keys.includes("claude_gpt_5h"));
 });

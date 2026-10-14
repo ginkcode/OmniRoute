@@ -207,7 +207,14 @@ function parseAntigravityQuota(modelKey: string, quota: any) {
     return buildCreditsQuota("credits", remaining, remaining > 50 ? 100 : remaining > 10 ? 60 : 20);
   }
   if (modelKey === "models" || isUnlimitedEmpty(quota)) return null;
+  // Weekly rows are labelled with the upstream group name ("Gemini Models"), which reads
+  // exactly like the 5h pool row of the same group; name the window.
+  const displayName =
+    /_weekly$/.test(modelKey) && quota?.displayName && !/week/i.test(quota.displayName)
+      ? `${quota.displayName} · Weekly`
+      : undefined;
   return normalizeQuotaEntry(modelKey, quota, {
+    ...(displayName ? { displayName } : {}),
     modelKey,
     isPercentageOnly: quota?.fractionReported === true,
     ...(quota?.quotaSource ? { quotaSource: quota.quotaSource } : {}),
@@ -216,16 +223,16 @@ function parseAntigravityQuota(modelKey: string, quota: any) {
 }
 
 /**
- * Antigravity meters models in shared upstream pools (the weekly buckets are named after
- * them: `gemini_weekly`, `claude_gpt_weekly`), so every model of a pool reports the same
- * remaining fraction and reset. Listing them one by one repeats the same bar, so the
- * display folds each pool into a single row. Display-only: the fetcher keeps per-model
+ * Antigravity meters models in shared upstream pools per 5h window (the weekly buckets
+ * are named after them: `gemini_weekly`, `claude_gpt_weekly`), so every model of a pool
+ * reports the same remaining fraction and reset. Listing them one by one repeats the same
+ * bar, so the display folds each pool into a single row. Display-only: the fetcher keeps per-model
  * keys, which quota-aware routing and the per-window cutoffs rely on.
  */
 const ANTIGRAVITY_QUOTA_POOLS = [
-  { name: "gemini_models", matches: (key: string) => key.startsWith("gemini-") },
+  { name: "gemini_5h", matches: (key: string) => key.startsWith("gemini-") },
   {
-    name: "claude_gpt_models",
+    name: "claude_gpt_5h",
     matches: (key: string) => key.startsWith("claude-") || key.startsWith("gpt-oss-"),
   },
 ];
