@@ -207,14 +207,10 @@ function parseAntigravityQuota(modelKey: string, quota: any) {
     return buildCreditsQuota("credits", remaining, remaining > 50 ? 100 : remaining > 10 ? 60 : 20);
   }
   if (modelKey === "models" || isUnlimitedEmpty(quota)) return null;
-  // Weekly rows are labelled with the upstream group name ("Gemini Models"), which reads
-  // exactly like the 5h pool row of the same group; name the window.
-  const displayName =
-    /_weekly$/.test(modelKey) && quota?.displayName && !/week/i.test(quota.displayName)
-      ? `${quota.displayName} · Weekly`
-      : undefined;
-  return normalizeQuotaEntry(modelKey, quota, {
-    ...(displayName ? { displayName } : {}),
+  // Weekly rows carry the upstream group name ("Gemini Models") as displayName, which hides
+  // the window; let the quota key label them instead ("Gemini Weekly", like Codex's "Weekly").
+  const source = /_weekly$/.test(modelKey) ? { ...quota, displayName: undefined } : quota;
+  return normalizeQuotaEntry(modelKey, source, {
     modelKey,
     isPercentageOnly: quota?.fractionReported === true,
     ...(quota?.quotaSource ? { quotaSource: quota.quotaSource } : {}),

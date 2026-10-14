@@ -100,10 +100,10 @@ test("pool rows and weekly rows carry distinct window labels", () => {
     return q.displayName || utils.formatQuotaLabel(q.name);
   };
 
-  assert.equal(label("gemini_5h"), "Gemini Models · 5h");
-  assert.equal(label("claude_gpt_5h"), "Claude and GPT Models · 5h");
-  assert.equal(label("gemini_weekly"), "Gemini Models · Weekly");
-  assert.equal(label("claude_gpt_weekly"), "Claude and GPT models · Weekly");
+  assert.equal(label("gemini_5h"), "Gemini Session");
+  assert.equal(label("claude_gpt_5h"), "Claude & GPT Session");
+  assert.equal(label("gemini_weekly"), "Gemini Weekly");
+  assert.equal(label("claude_gpt_weekly"), "Claude & GPT Weekly");
   assert.equal(
     new Set(quotas.map((q) => q.displayName || utils.formatQuotaLabel(q.name))).size,
     quotas.length
