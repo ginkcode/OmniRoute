@@ -272,7 +272,10 @@ function QuotaDetailRow({
   const showUsage = shouldShowQuotaUsageCount(q);
 
   return (
-    <div className="flex flex-col gap-1 py-1" title={q.modelKey || q.name}>
+    <div
+      className="flex flex-col gap-1 py-1"
+      title={q.memberModelKeys?.join(", ") || q.modelKey || q.name}
+    >
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12px] font-medium text-text-main truncate">{label}</span>
         <span

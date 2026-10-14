@@ -13,6 +13,7 @@ import {
   matchesProviderFilter,
   buildProviderOptions,
   compareQuotaConnections,
+  expandQuotaCutoffWindows,
 } from "./utils";
 import Card from "@/shared/components/Card";
 import { CardSkeleton } from "@/shared/components/Loading";
@@ -104,8 +105,9 @@ function shouldAutoRefreshQuota(provider: string, cached: any): boolean {
   return quotas.some(
     (q: any) =>
       q &&
-      typeof q.modelKey === "string" &&
-      q.modelKey.startsWith("gemini-") &&
+      [q.modelKey, ...(Array.isArray(q.memberModelKeys) ? q.memberModelKeys : [])].some(
+        (key) => typeof key === "string" && key.startsWith("gemini-")
+      ) &&
       !q.isCredits &&
       q.quotaSource !== "retrieveUserQuota"
   );
@@ -1089,7 +1091,7 @@ export default function ProviderLimits({
           renderInlineQuotaSummary={(quota) => renderInlineQuotaSummary(quota.quotas)}
           onRefresh={refreshProvider}
           onOpenCutoff={(conn) => {
-            const windows = (visibleQuotaData[conn.id]?.quotas || []).filter(
+            const windows = expandQuotaCutoffWindows(visibleQuotaData[conn.id]?.quotas).filter(
               (q: any) => q && typeof q.name === "string" && !q.isCredits
             );
             setCutoffModalWindows(windows);

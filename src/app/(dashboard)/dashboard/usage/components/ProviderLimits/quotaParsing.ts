@@ -215,10 +215,73 @@ function parseAntigravityQuota(modelKey: string, quota: any) {
   });
 }
 
+/**
+ * Antigravity meters models in shared upstream pools (the weekly buckets are named after
+ * them: `gemini_weekly`, `claude_gpt_weekly`), so every model of a pool reports the same
+ * remaining fraction and reset. Listing them one by one repeats the same bar, so the
+ * display folds each pool into a single row. Display-only: the fetcher keeps per-model
+ * keys, which quota-aware routing and the per-window cutoffs rely on.
+ */
+const ANTIGRAVITY_QUOTA_POOLS = [
+  { name: "gemini_models", matches: (key: string) => key.startsWith("gemini-") },
+  {
+    name: "claude_gpt_models",
+    matches: (key: string) => key.startsWith("claude-") || key.startsWith("gpt-oss-"),
+  },
+];
+const POOL_RESET_TOLERANCE_MS = 60_000;
+const POOL_PERCENT_TOLERANCE = 0.01;
+
+function sharesPoolQuota(a: any, b: any): boolean {
+  if (a.isPercentageOnly !== b.isPercentageOnly) return false;
+  if (a.remainingPercentage === undefined || b.remainingPercentage === undefined) {
+    if (a.remainingPercentage !== b.remainingPercentage) return false;
+  } else if (Math.abs(a.remainingPercentage - b.remainingPercentage) > POOL_PERCENT_TOLERANCE) {
+    return false;
+  }
+  const resetA = a.resetAt ? Date.parse(a.resetAt) : NaN;
+  const resetB = b.resetAt ? Date.parse(b.resetAt) : NaN;
+  if (Number.isNaN(resetA) || Number.isNaN(resetB))
+    return Number.isNaN(resetA) === Number.isNaN(resetB);
+  return Math.abs(resetA - resetB) <= POOL_RESET_TOLERANCE_MS;
+}
+
+function groupAntigravityQuotaPools(quotas: any[]): any[] {
+  const result = [...quotas];
+  for (const pool of ANTIGRAVITY_QUOTA_POOLS) {
+    const members = result.filter(
+      (q) => !q.isCredits && typeof q.modelKey === "string" && pool.matches(q.modelKey)
+    );
+    // A family whose models disagree is not (or no longer) one pool; keep its rows honest.
+    if (members.length < 2 || !members.every((q) => sharesPoolQuota(members[0], q))) continue;
+
+    // The pool is only as fresh as its stalest member (index.tsx re-fetches on that signal).
+    const quotaSource =
+      members.find((q) => q.quotaSource && q.quotaSource !== "retrieveUserQuota")?.quotaSource ??
+      members[0].quotaSource;
+    const { modelKey: _modelKey, ...first } = members[0];
+    const row = {
+      ...first,
+      name: pool.name,
+      memberModelKeys: members.map((q) => q.modelKey),
+      ...(quotaSource ? { quotaSource } : {}),
+    };
+    const firstIndex = result.indexOf(members[0]);
+    const memberSet = new Set(members);
+    result.splice(firstIndex, 1, row);
+    for (let i = result.length - 1; i >= 0; i--) {
+      if (memberSet.has(result[i])) result.splice(i, 1);
+    }
+  }
+  return result;
+}
+
 function parseAntigravity(data: any) {
-  return quotaEntries(data)
-    .map(([modelKey, quota]) => parseAntigravityQuota(modelKey, quota))
-    .filter(Boolean);
+  return groupAntigravityQuotaPools(
+    quotaEntries(data)
+      .map(([modelKey, quota]) => parseAntigravityQuota(modelKey, quota))
+      .filter(Boolean)
+  );
 }
 
 function buildBankedResetCreditsQuota(count: number) {

@@ -82,14 +82,15 @@ test("getProviderColumns: MiniMax `session (5h)` matches the `session` column vi
 });
 
 test("getProviderColumns: Antigravity falls back to dynamic schema (first 3 quotas)", () => {
+  // Distinct remaining percentages: models reporting one shared quota fold into a pool row.
   const quotas = utils.parseQuotaData("antigravity", {
     quotas: {
       "claude-opus-4-6-thinking": { used: 0, total: 100, remainingPercentage: 100 },
-      "claude-sonnet-4-6": { used: 0, total: 100, remainingPercentage: 100 },
-      "gemini-3.1-pro-low": { used: 0, total: 100, remainingPercentage: 100 },
-      "gemini-3.7-flash-low": { used: 0, total: 100, remainingPercentage: 100 },
-      "gemini-3.7-flash-medium": { used: 0, total: 100, remainingPercentage: 100 },
-      "gemini-3.7-flash-high": { used: 0, total: 100, remainingPercentage: 100 },
+      "claude-sonnet-4-6": { used: 10, total: 100, remainingPercentage: 90 },
+      "gemini-3.1-pro-low": { used: 20, total: 100, remainingPercentage: 80 },
+      "gemini-3.7-flash-low": { used: 30, total: 100, remainingPercentage: 70 },
+      "gemini-3.7-flash-medium": { used: 40, total: 100, remainingPercentage: 60 },
+      "gemini-3.7-flash-high": { used: 50, total: 100, remainingPercentage: 50 },
     },
   });
 

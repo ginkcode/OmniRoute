@@ -37,6 +37,8 @@ const QUOTA_LABEL_MAP: Record<string, string> = {
   banked_reset_credits: "Banked Reset Credits",
   gemini_weekly: "Gemini Weekly",
   claude_gpt_weekly: "Claude & GPT Weekly",
+  gemini_models: "Gemini Models",
+  claude_gpt_models: "Claude & GPT Models",
 };
 
 function toRecord(value: unknown): Record<string, unknown> {
@@ -556,20 +558,44 @@ export function filterHiddenModelQuotas(
   );
   if (hidden.size === 0) return quotas;
 
-  return quotas.filter((quota) => {
-    if (!quota || quota.isCredits) return true;
+  const isHiddenModel = (modelId: string) => {
+    const candidates = new Set<string>();
+    addQuotaModelIdVariants(candidates, provider, modelId);
+    return Array.from(candidates).some((candidate) => hidden.has(candidate));
+  };
+
+  return quotas.flatMap((quota) => {
+    if (!quota || quota.isCredits) return [quota];
+    // Pooled rows (Antigravity): drop hidden members, and the row once none is left.
+    if (Array.isArray(quota.memberModelKeys)) {
+      const members = quota.memberModelKeys.filter((id: string) => !isHiddenModel(id));
+      if (members.length === 0) return [];
+      return members.length === quota.memberModelKeys.length
+        ? [quota]
+        : [{ ...quota, memberModelKeys: members }];
+    }
     const modelId =
       typeof quota.modelKey === "string"
         ? quota.modelKey
         : typeof quota.modelId === "string"
           ? quota.modelId
           : "";
-    if (!modelId) return true;
-
-    const candidates = new Set<string>();
-    addQuotaModelIdVariants(candidates, provider, modelId);
-    return !Array.from(candidates).some((candidate) => hidden.has(candidate));
+    return modelId && isHiddenModel(modelId) ? [] : [quota];
   });
+}
+
+/**
+ * Quota windows offered in the per-connection cutoff editor. Pooled display rows expand
+ * back into their member model keys: preflight resolves cutoffs per quota key, so a
+ * threshold saved under the pool name would never apply.
+ */
+export function expandQuotaCutoffWindows(quotas: any[] | undefined): any[] {
+  if (!Array.isArray(quotas)) return [];
+  return quotas.flatMap((quota) =>
+    quota && Array.isArray(quota.memberModelKeys)
+      ? quota.memberModelKeys.map((modelKey: string) => ({ ...quota, name: modelKey, modelKey }))
+      : [quota]
+  );
 }
 
 // --- Per-user quota row visibility (upstream 9router#2371 port) ---------
