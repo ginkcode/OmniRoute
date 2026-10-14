@@ -10,7 +10,7 @@
  *   1. empty cache  → {} (no scan needed)
  *   2. non-Antigravity entry → returned verbatim (a junk quota key survives), proving
  *      entries whose connection is no longer fetched are still passed through unchanged
- *   3. Antigravity entry → still sanitized (a non-user-callable quota key is dropped),
+ *   3. Antigravity entry → still sanitized (a non-chat quota key is dropped),
  *      proving the scoped query still feeds the sanitizer
  *
  * (2) is the load-bearing case: with the old code the openai connection was fetched and
@@ -79,7 +79,7 @@ test("non-Antigravity cache entry is returned verbatim (junk quota key survives)
   assert.deepEqual(entry.quotas, quotas);
 });
 
-test("Antigravity cache entry is still sanitized (non-user-callable quota key dropped)", async () => {
+test("Antigravity cache entry is still sanitized (non-chat quota key dropped)", async () => {
   const conn = await providersDb.createProviderConnection({
     provider: "antigravity",
     authType: "oauth",
@@ -89,10 +89,12 @@ test("Antigravity cache entry is still sanitized (non-user-callable quota key dr
     refreshToken: "ag-refresh",
     expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
   });
-  // `credits` is always allowed; the junk model id is not user-callable → dropped.
+  // `credits` is always allowed; the tab-completion bucket is a known non-chat surface → dropped.
+  // (An unknown chat-shaped id is NOT junk: the live catalog may list models the static
+  // fallback catalog has not learned yet, and their quota must survive.)
   const quotas = {
     credits: { used: 5, limit: 100 },
-    "definitely-not-a-real-model": { used: 1, limit: 10 },
+    tab_flash_lite_preview: { used: 1, limit: 10 },
   };
   providerLimitsDb.setProviderLimitsCache((conn as { id: string }).id, cacheEntry(quotas));
 
@@ -101,7 +103,7 @@ test("Antigravity cache entry is still sanitized (non-user-callable quota key dr
   assert.ok(entry?.quotas, "antigravity cache entry should be present");
   assert.ok("credits" in (entry.quotas as Record<string, unknown>), "credits is kept");
   assert.ok(
-    !("definitely-not-a-real-model" in (entry.quotas as Record<string, unknown>)),
-    "non-user-callable quota key is dropped for antigravity"
+    !("tab_flash_lite_preview" in (entry.quotas as Record<string, unknown>)),
+    "non-chat quota key is dropped for antigravity"
   );
 });

@@ -173,6 +173,38 @@ test("ANTIGRAVITY_PUBLIC_MODELS exposes current live names and capabilities", ()
     supportsReasoning: true,
     toolCalling: true,
   });
+  // Claude 5.5 effort tiers and Gemini 3.5 Flash Lite, with the limits the live
+  // fetchAvailableModels catalog reports (maxTokens / maxOutputTokens).
+  for (const family of ["opus", "sonnet"]) {
+    for (const [tier, tierName] of [
+      ["low", "Low"],
+      ["medium", "Medium"],
+      ["high", "High"],
+    ]) {
+      const modelId = `claude-${family}-5-5-${tier}`;
+      const familyName = family === "opus" ? "Opus" : "Sonnet";
+      assert.deepEqual(getPublicModel(modelId), {
+        id: modelId,
+        name: `Claude ${familyName} 5.5 (${tierName})`,
+        contextLength: 1000000,
+        maxOutputTokens: 128000,
+        supportsReasoning: true,
+        supportsVision: true,
+        toolCalling: true,
+      });
+      assert.equal(isUserCallableAntigravityModelId(modelId), true);
+      assert.equal(resolveAntigravityModelId(modelId), modelId);
+    }
+  }
+  assert.deepEqual(getPublicModel("gemini-3.5-flash-lite"), {
+    id: "gemini-3.5-flash-lite",
+    name: "Gemini 3.5 Flash Lite",
+    contextLength: 1048576,
+    maxOutputTokens: 65535,
+    supportsReasoning: true,
+    supportsVision: true,
+    toolCalling: true,
+  });
   assert.equal(getPublicModel("gemini-3-pro-image-preview"), undefined);
   assert.equal(getPublicModel("gemini-3.1-flash-image"), undefined);
   assert.equal(getPublicModel("gemini-2.5-computer-use-preview-10-2025"), undefined);

@@ -42,8 +42,15 @@ const EXPECTED_LEADING_MODEL_ORDER = [
   "gemini-pro-agent",
   "gemini-3.1-pro-low",
   "gemini-3.1-flash-lite",
+  "gemini-3.5-flash-lite",
   "claude-opus-4-6-thinking",
   "claude-sonnet-4-6",
+  "claude-opus-5-5-low",
+  "claude-opus-5-5-medium",
+  "claude-opus-5-5-high",
+  "claude-sonnet-5-5-low",
+  "claude-sonnet-5-5-medium",
+  "claude-sonnet-5-5-high",
   "gpt-oss-120b-medium",
 ] as const;
 

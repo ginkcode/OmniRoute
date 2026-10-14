@@ -1,5 +1,5 @@
 import {
-  isUserCallableAntigravityModelId,
+  isUserVisibleAntigravityQuotaModelId,
   toClientAntigravityModelId,
 } from "@omniroute/open-sse/config/antigravityModelAliases.ts";
 import { isDiscoverableAgyModelId } from "@omniroute/open-sse/config/agyModels.ts";
@@ -12,7 +12,9 @@ export function isRecord(value: unknown): value is JsonRecord {
 
 export function isUsageQuotaKeyAllowed(provider: string, quotaKey: string): boolean {
   if (quotaKey === "credits" || quotaKey === "models") return true;
-  if (provider === "antigravity") return isUserCallableAntigravityModelId(quotaKey);
+  // Same predicate the Antigravity usage fetcher filters with: the live catalog decides,
+  // so models launched after the static fallback catalog keep their quota here too.
+  if (provider === "antigravity") return isUserVisibleAntigravityQuotaModelId(quotaKey);
   if (provider === "agy") return isDiscoverableAgyModelId(quotaKey);
   return true;
 }
