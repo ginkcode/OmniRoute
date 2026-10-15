@@ -12,7 +12,7 @@
  * optional log line are returned for the handler to apply.
  */
 
-import { splitClaudeEffortSuffix } from "../../config/providerModels.ts";
+import { getModelsByProviderId, splitClaudeEffortSuffix } from "../../config/providerModels.ts";
 import { isClaudeCodeCompatibleProvider } from "../../services/claudeCodeCompatible.ts";
 import { FORMATS } from "../../translator/formats.ts";
 import { isKnownClaudeEffortBaseModel } from "../../utils/claudeEffortVariants.ts";
@@ -64,7 +64,18 @@ export function applyClaudeEffortVariant(opts: {
   if (typeof effectiveModel === "string") {
     const { baseModel, effort } = splitClaudeEffortSuffix(effectiveModel);
     const isDirectClaudeLane = provider === "claude" || isClaudeCodeCompatibleProvider(provider);
-    if (effort && (isDirectClaudeLane || isKnownClaudeEffortBaseModel(baseModel))) {
+    // Antigravity lists the Claude 5.5 effort tiers as distinct upstream ids
+    // (`claude-opus-5-5-low`) with no base id behind them; a suffixed id the provider's
+    // own catalog registers is the real model, so it must reach upstream unchanged.
+    const isNativeSuffixedId =
+      !!effort &&
+      !!provider &&
+      getModelsByProviderId(provider).some((model) => model.id === effectiveModel);
+    if (
+      effort &&
+      !isNativeSuffixedId &&
+      (isDirectClaudeLane || isKnownClaudeEffortBaseModel(baseModel))
+    ) {
       effectiveModel = baseModel;
       if (body && typeof body === "object" && !Array.isArray(body)) {
         const claudeBody = body as Record<string, unknown>;

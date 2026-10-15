@@ -274,3 +274,35 @@ test("a claude-lane strip still happens for the same model name (control)", () =
   assert.equal(r.effectiveModel, "claude-opus-5");
   assert.equal(body.reasoning_effort, "low");
 });
+
+// Antigravity lists the Claude 5.5 effort tiers as distinct upstream model ids
+// (`claude-opus-5-5-low`); there is no `claude-opus-5-5` base id, so stripping the suffix
+// dispatched a nonexistent model that upstream answered with 404/429.
+for (const provider of ["antigravity", "agy"]) {
+  test(`${provider}: keeps native Claude 5.5 effort-tier ids literal`, () => {
+    for (const model of ["claude-opus-5-5-low", "claude-sonnet-5-5-high"]) {
+      const body = { model, messages: [] };
+      const result = applyClaudeEffortVariant({
+        provider,
+        effectiveModel: model,
+        body,
+        sourceFormat: FORMATS.OPENAI,
+      });
+      assert.deepEqual(result, { effectiveModel: model, log: null });
+      assert.deepEqual(body, { model, messages: [] });
+    }
+  });
+
+  test(`${provider}: still strips synthesized effort variants of thinking Claude models`, () => {
+    const body: Record<string, unknown> = { model: "claude-sonnet-4-6-high", messages: [] };
+    const result = applyClaudeEffortVariant({
+      provider,
+      effectiveModel: "claude-sonnet-4-6-high",
+      body,
+      sourceFormat: FORMATS.OPENAI,
+    });
+    assert.equal(result.effectiveModel, "claude-sonnet-4-6");
+    assert.equal(body.model, "claude-sonnet-4-6");
+    assert.equal(body.reasoning_effort, "high");
+  });
+}
