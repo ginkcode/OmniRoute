@@ -24,7 +24,11 @@ import {
   type QuotaFetcher,
   type QuotaInfo,
 } from "./quotaPreflight.ts";
-import { getAntigravityQuotaFamily, getQuotaFetchScope } from "./antigravityQuotaFamily.ts";
+import {
+  getAntigravityQuotaFamily,
+  getQuotaFetchScope,
+  selectAntigravityQuotaWindowNames,
+} from "./antigravityQuotaFamily.ts";
 import { boundedMap } from "../../src/lib/quota/boundedMap.ts";
 import { toNumberOrNull } from "@/shared/utils/numeric";
 
@@ -277,7 +281,9 @@ export function convertUsageToQuotaInfo(
             return getAntigravityQuotaFamily(key) === requestedFamily;
           })
         )
-      : windows;
+      : requestedFamily === "other"
+        ? scopeOtherFamilyWindows(windows, context.requestedModel)
+        : windows;
   if (Object.keys(providerScopedWindows).length === 0) return null;
 
   const normalized = normalizeQuotaWindows(providerScopedWindows, context);
@@ -304,6 +310,19 @@ export function convertUsageToQuotaInfo(
  */
 function isAntigravityProvider(provider: string | null | undefined): boolean {
   return provider === "antigravity" || provider === "agy";
+}
+
+/**
+ * Antigravity models outside the Gemini/Claude families (GPT-OSS) read their own window plus the
+ * weekly bucket upstream bills them in. Models with no matching window keep every window, as before.
+ */
+function scopeOtherFamilyWindows<T>(
+  windows: Record<string, T>,
+  requestedModel: string | null | undefined
+): Record<string, T> {
+  const scopedNames = selectAntigravityQuotaWindowNames(Object.keys(windows), requestedModel);
+  if (scopedNames.length === 0) return windows;
+  return Object.fromEntries(scopedNames.map((name) => [name, windows[name]]));
 }
 
 function antigravityWeeklyWindowMatchesFamily(key: string, family: "gemini" | "claude"): boolean {

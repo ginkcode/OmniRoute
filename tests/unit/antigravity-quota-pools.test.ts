@@ -4,8 +4,9 @@ import assert from "node:assert/strict";
 const utils =
   await import("../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/utils.tsx");
 
-const GEMINI_RESET = "2026-10-14T17:22:36.000Z";
-const CLAUDE_RESET = "2026-10-14T20:15:14.000Z";
+// Resets must stay in the future: a past reset makes the parser treat the window as refilled.
+const GEMINI_RESET = new Date(Date.now() + 2 * 3600_000).toISOString();
+const CLAUDE_RESET = new Date(Date.now() + 4 * 3600_000).toISOString();
 
 function geminiQuota(remainingPercentage = 97.2) {
   return {

@@ -1,5 +1,7 @@
 const ANTIGRAVITY_PROVIDER_ID = "antigravity";
 
+const CLAUDE_EFFORT_SUFFIX_RE = /-(?:xhigh|high|medium|low|max)$/i;
+
 export type AntigravityQuotaFamily = "gemini" | "claude" | "other";
 
 function normalizeModelId(model: string | null | undefined): string {
@@ -113,10 +115,17 @@ export function selectAntigravityQuotaWindowNames(
     : cleanRequestedModel;
 
   if (requestedFamily === "other") {
-    return quotaNames.filter((windowName) => {
+    const exact = quotaNames.filter((windowName) => {
       const bare = windowName.replace(/^(antigravity|agy)\//, "");
       return bare === bareModel || bare === cleanRequestedModel;
     });
+    // GPT-OSS keeps its own 5h window but is billed in the upstream "Claude and GPT models"
+    // weekly bucket, so that weekly gates it too. Its family stays "other" so a GPT-OSS 429
+    // never cools the Claude models.
+    if (/^gpt-oss-/i.test(bareModel) && quotaNames.includes("claude_gpt_weekly")) {
+      exact.push("claude_gpt_weekly");
+    }
+    return exact;
   }
 
   const familyAggregates =
@@ -137,9 +146,7 @@ export function selectAntigravityQuotaWindowNames(
   // unrelated Gemini sibling can never dilute exact-model exhaustion. This is
   // intentionally version-agnostic for newly discovered Gemini Flash releases.
   if (exactWindows.length === 0) {
-    const flashMatch = bareModel.match(
-      /^(gemini-\d+(?:\.\d+)*-flash)(?:-(?:high|medium|low))?$/
-    );
+    const flashMatch = bareModel.match(/^(gemini-\d+(?:\.\d+)*-flash)(?:-(?:high|medium|low))?$/);
     if (flashMatch) {
       const technicalTieredModel = `${flashMatch[1]}-tiered`;
       exactWindows = quotaNames.filter((windowName) => {
@@ -149,9 +156,23 @@ export function selectAntigravityQuotaWindowNames(
     }
   }
 
+  // Synthesized Claude effort variants (`claude-sonnet-4-6-high`) are stripped to their base id
+  // before dispatch, so they spend the base model's window. Native tier ids such as
+  // `claude-opus-5-5-low` have their own window and already matched exactly above.
+  if (exactWindows.length === 0 && requestedFamily === "claude") {
+    const baseModel = bareModel.replace(CLAUDE_EFFORT_SUFFIX_RE, "");
+    if (baseModel !== bareModel) {
+      exactWindows = quotaNames.filter(
+        (windowName) => windowName.replace(/^(antigravity|agy)\//, "") === baseModel
+      );
+    }
+  }
+
   const aggregateWindows = familyAggregates.filter((key) => quotaNames.includes(key));
   const scoped = [...exactWindows, ...aggregateWindows];
   if (scoped.length > 0) return scoped;
 
-  return quotaNames.filter((windowName) => getAntigravityQuotaFamily(windowName) === requestedFamily);
+  return quotaNames.filter(
+    (windowName) => getAntigravityQuotaFamily(windowName) === requestedFamily
+  );
 }
