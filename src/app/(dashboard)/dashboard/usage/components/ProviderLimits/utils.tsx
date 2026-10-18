@@ -379,6 +379,12 @@ export function hasQuotaCutoffOverrides(connection: any): boolean {
   return !!overrides && Object.keys(overrides).length > 0;
 }
 
+/** Tooltip for stale quota data — appends the reason the last refresh fell back to cache. */
+export function formatStaleQuotaTitle(base: string, reason?: string | null): string {
+  const detail = typeof reason === "string" ? reason.trim() : "";
+  return detail ? `${base}: ${detail}` : base;
+}
+
 export const STATUS_EMOJI = {
   critical: "🔴",
   alert: "🟡",

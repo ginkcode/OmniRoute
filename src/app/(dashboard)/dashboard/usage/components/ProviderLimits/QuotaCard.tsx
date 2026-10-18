@@ -144,6 +144,7 @@ export default function QuotaCard({
         resolvedPlan={resolvedPlan}
         emailsVisible={emailsVisible}
         hasStaleData={hasStaleData}
+        staleReason={quota?.stale?.reason ?? null}
         onToggleActive={onToggleActive}
         togglingActive={togglingActive}
       />
@@ -160,6 +161,7 @@ export default function QuotaCard({
         }
         refreshedAt={displayRefreshedAt}
         hasStaleData={hasStaleData}
+        staleReason={quota?.stale?.reason ?? null}
         onRefresh={onRefresh}
         onOpenCutoff={onOpenCutoff}
         onOpenCost={() => setCostModalOpen(true)}

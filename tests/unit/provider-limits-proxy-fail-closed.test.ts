@@ -37,7 +37,9 @@ async function createClaudeOAuthConnection() {
     authType: "oauth",
     name: `Claude Provider Limits ${Date.now()} ${Math.random()}`,
     email: `claude-${Date.now()}-${Math.random()}@example.test`,
-    accessToken: "claude-access-token",
+    // Distinct accounts need distinct tokens: Claude usage results and in-flight requests
+    // are shared per token, and the fail-closed case leaves its request pending forever.
+    accessToken: `claude-access-token-${Math.random()}`,
     refreshToken: "claude-refresh-token",
     expiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
   });

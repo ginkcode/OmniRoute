@@ -5,7 +5,7 @@ import Badge from "@/shared/components/Badge";
 import ProviderIcon from "@/shared/components/ProviderIcon";
 import { pickDisplayValue } from "@/shared/utils/maskEmail";
 import { readCookieExpiresAt } from "@/shared/utils/webCookieExpiry";
-import { formatCountdown, type CardStatus } from "../utils";
+import { formatCountdown, formatStaleQuotaTitle, type CardStatus } from "../utils";
 import { translateUsageOrFallback } from "../i18nFallback";
 
 const STATUS_DOT_CLASS: Record<CardStatus, string> = {
@@ -23,6 +23,8 @@ interface Props {
   resolvedPlan: string | null;
   emailsVisible: boolean;
   hasStaleData: boolean;
+  /** Why the last refresh fell back to cached data (upstream message). */
+  staleReason?: string | null;
   /** Toggle the connection's active state (routing on/off). */
   onToggleActive: (nextActive: boolean) => void;
   /** True while the active-state PUT is in flight. */
@@ -37,6 +39,7 @@ export default function QuotaCardHeader({
   resolvedPlan,
   emailsVisible,
   hasStaleData,
+  staleReason = null,
   onToggleActive,
   togglingActive,
 }: Props) {
@@ -108,7 +111,7 @@ export default function QuotaCardHeader({
             {hasStaleData && (
               <span
                 className="material-symbols-outlined shrink-0 text-[12px] leading-4 text-amber-500"
-                title={t("staleQuotaTooltip")}
+                title={formatStaleQuotaTitle(t("staleQuotaTooltip"), staleReason)}
               >
                 schedule
               </span>

@@ -8,7 +8,8 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omniroute-fable-usage-"))
 process.env.DATA_DIR = dataDir;
 process.env.API_KEY_SECRET = "fable-usage-test-secret";
 
-const { getClaudeUsage } = await import("../../open-sse/services/usage/claude.ts");
+const { getClaudeUsage, _resetClaudeUsageCache } =
+  await import("../../open-sse/services/usage/claude.ts");
 const { parseQuotaData } =
   await import("../../src/app/(dashboard)/dashboard/usage/components/ProviderLimits/quotaParsing.ts");
 const { GET } = await import("../../src/app/api/usage/[connectionId]/route.ts");
@@ -36,6 +37,8 @@ function scopedLimit(percent: unknown = 100) {
 }
 
 function mockUsage(limits: unknown, unavailable = false) {
+  // getClaudeUsage shares results per token; a new upstream payload must not be masked.
+  _resetClaudeUsageCache();
   globalThis.fetch = async (url) => {
     if (String(url).endsWith("/api/oauth/usage") && !unavailable) {
       return Response.json({

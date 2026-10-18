@@ -14,6 +14,7 @@ import {
   formatQuotaLabel,
   getBarColor,
   getQuotaRemainingPercentage,
+  formatStaleQuotaTitle,
   getQuotaVisibilityKey,
   shouldShowQuotaUsageCount,
 } from "../utils";
@@ -143,6 +144,8 @@ interface Props {
   billing?: ProviderBillingStatus | null;
   refreshedAt?: string;
   hasStaleData: boolean;
+  /** Why the last refresh fell back to cached data (upstream message). */
+  staleReason?: string | null;
   onRefresh: () => void;
   onOpenCutoff: () => void;
   onOpenCost: () => void;
@@ -331,6 +334,7 @@ export default function QuotaCardExpanded({
   billing,
   refreshedAt,
   hasStaleData,
+  staleReason = null,
   onRefresh,
   onOpenCutoff,
   onOpenCost,
@@ -458,7 +462,7 @@ export default function QuotaCardExpanded({
             }`}
             title={
               hasStaleData
-                ? t("staleQuotaTooltip")
+                ? formatStaleQuotaTitle(t("staleQuotaTooltip"), staleReason)
                 : `${tr("lastRefreshed", "Last refreshed")}: ${refreshedLabel}`
             }
           >
