@@ -116,11 +116,8 @@ test("6A.8 isSpawnCapableSource: returns false for normal route source", () => {
 });
 
 test("6A.8 findSpawnCapableRoutes: detects real spawn-capable route.ts files", () => {
-  // system/version and db-backups/exportAll are known spawn-capable outside SPAWN_CAPABLE_ROUTE_ROOTS
-  const knownSpawnRoutes = [
-    "src/app/api/system/version/route.ts",
-    "src/app/api/db-backups/exportAll/route.ts",
-  ];
+  // The fork's system/version no longer spawns updates; backup exports still spawn tar.
+  const knownSpawnRoutes = ["src/app/api/db-backups/exportAll/route.ts"];
   const found = findSpawnCapableRoutes(repoRoot);
   for (const r of knownSpawnRoutes) {
     assert.ok(
