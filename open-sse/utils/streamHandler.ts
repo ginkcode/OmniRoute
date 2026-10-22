@@ -4,7 +4,11 @@ import { FORMATS } from "../translator/formats.ts";
 import { buildErrorBody } from "./error.ts";
 import { PENDING_REQUEST_CLEARED_MARKER } from "./stream.ts";
 import { createCompletedResponsesToolHandoffWatcher } from "./responsesToolHandoff.ts";
-import { createStreamContentWatcher, type StreamContentWatcher } from "./streamReadiness.ts";
+import {
+  createStreamContentWatcher,
+  hasClaudeThinkingProgress,
+  type StreamContentWatcher,
+} from "./streamReadiness.ts";
 import { hasOpenReasoning } from "./emptyTurnRetry.ts";
 
 // Stream handler with disconnect detection - shared for all providers
@@ -1148,7 +1152,15 @@ export function pipeWithDisconnect(
         stallBytes += chunk.byteLength;
         noteStallText(decoded);
         upstreamContentWatcher.note(decoded);
-        if (upstreamContentWatcher.sawContent()) clearContentStall();
+        if (upstreamContentWatcher.sawContent()) {
+          clearContentStall();
+        } else if (contentStallTimer && hasClaudeThinkingProgress(decoded)) {
+          // Redacted Claude thinking: no visible output yet, but the model is
+          // reporting progress — restart the budget instead of killing a live
+          // turn. A thinking phase that stops progressing still trips.
+          clearContentStall();
+          armContentStall();
+        }
       }
       controller.enqueue(chunk);
     },

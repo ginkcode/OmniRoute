@@ -989,6 +989,94 @@ test("pipeWithDisconnect does NOT flag a stream that starts with lifecycle frame
   assert.match(text, /Hello/);
 });
 
+// Live incident (2026-10-22, claude/claude-sonnet-5-5): with the
+// `redact-thinking` beta, first-party Claude streams a long thinking phase as
+// `thinking_delta` frames whose `thinking` is "" and whose only payload is a
+// numeric `estimated_tokens` progress counter. None of those frames is
+// user-visible content, so the content-stall watchdog killed every turn that
+// thought for longer than the 80s budget even though the model was actively
+// reporting progress the whole time.
+test("pipeWithDisconnect does NOT flag a Claude redacted-thinking stream that keeps reporting progress", async () => {
+  const thinkingDelta = (n) =>
+    `event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"","estimated_tokens":${n}}}\n\n`;
+  const source = new ReadableStream({
+    async start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[]}}\n\n' +
+            'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}\n\n'
+        )
+      );
+      // Total thinking time (6 x 40ms = 240ms) is well past the 100ms
+      // content-stall budget, but each progress frame arrives inside it.
+      for (let i = 1; i <= 6; i++) {
+        await new Promise((r) => setTimeout(r, 40));
+        controller.enqueue(encoder.encode(thinkingDelta(i * 150)));
+      }
+      controller.enqueue(
+        encoder.encode(
+          'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig"}}\n\n' +
+            'event: content_block_start\ndata: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}\n\n' +
+            'event: content_block_delta\ndata: {"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":"Done"}}\n\n'
+        )
+      );
+      controller.close();
+    },
+  });
+
+  let onErrorCalled = false;
+  const streamController = createStreamController({
+    onError() {
+      onErrorCalled = true;
+      return true;
+    },
+  });
+
+  const stream = pipeWithDisconnect(new Response(source), new TransformStream(), streamController, {
+    stallTimeoutMs: 5000,
+    contentStallTimeoutMs: 100,
+  });
+
+  const text = await readStreamText(stream);
+
+  assert.equal(onErrorCalled, false, "thinking progress must keep the content watchdog alive");
+  assert.doesNotMatch(text, /content stall/i);
+  assert.match(text, /Done/);
+});
+
+test("pipeWithDisconnect still flags a Claude redacted-thinking stream once progress stops", async () => {
+  const source = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        encoder.encode(
+          'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}\n\n' +
+            'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"","estimated_tokens":50}}\n\n'
+        )
+      );
+      // then only pings — no further progress, no content
+    },
+    cancel() {},
+  });
+
+  let onErrorEvent = null;
+  const streamController = createStreamController({
+    onError(event) {
+      onErrorEvent = event;
+      return true;
+    },
+  });
+
+  const stream = pipeWithDisconnect(new Response(source), new TransformStream(), streamController, {
+    stallTimeoutMs: 5000,
+    contentStallTimeoutMs: 80,
+  });
+
+  const text = await readStreamText(stream);
+
+  assert.ok(onErrorEvent !== null, "a thinking stream that stops progressing must still trip");
+  assert.match(text, /content stall/i);
+});
+
 test("pipeWithDisconnect content stall watchdog is off by default (no contentStallTimeoutMs)", async () => {
   // Same lifecycle-only-forever shape as the firing test above, but no
   // contentStallTimeoutMs opt-in — legacy behavior (relay forever) preserved.

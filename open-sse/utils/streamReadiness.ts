@@ -246,6 +246,21 @@ export function frameHasStructuredStreamError(frame: string): boolean {
   return false;
 }
 
+// Claude extended-thinking progress frames. With the `redact-thinking` beta the
+// upstream streams `thinking_delta` frames whose `thinking` is "" (only an
+// `estimated_tokens` counter), then a `signature_delta`; redacted blocks open as
+// `redacted_thinking`. None of these is user-visible output — they stay out of
+// hasUsefulStreamContent so the #8649 empty-turn guard is unchanged — but they
+// prove the model is alive, so the content-stall watchdog may re-arm on them.
+const CLAUDE_THINKING_PROGRESS_PATTERN =
+  /"type"\s*:\s*"(?:thinking_delta|signature_delta|redacted_thinking)"|"content_block"\s*:\s*\{\s*"type"\s*:\s*"thinking"/;
+
+/** True when a decoded upstream slice carries a Claude thinking-progress frame. */
+export function hasClaudeThinkingProgress(text: string): boolean {
+  if (!text) return false;
+  return CLAUDE_THINKING_PROGRESS_PATTERN.test(text);
+}
+
 export type StreamContentWatcher = {
   /** Feed a decoded slice of the client-facing stream. Safe to call with partial frames. */
   note: (text: string) => void;
