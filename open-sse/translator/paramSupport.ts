@@ -37,6 +37,11 @@ const MAX_OUTPUT_TOKEN_KEYS = ["max_tokens", "max_completion_tokens", "max_outpu
 const STRIP_RULES: StripRule[] = [
   // claude-opus-4 series: temperature is deprecated (Anthropic returns 400). #1748
   { match: /claude-opus-4/i, drop: ["temperature"] },
+  // claude-opus-5-5 / claude-sonnet-5-5 (and tier/thinking variants): Anthropic
+  // 400s "`temperature` is deprecated for this model." — seen live on both
+  // models via the universal-handoff summary call (temperature: 0.1). The
+  // `(?!\d)` keeps unrelated ids like claude-sonnet-5-50 untouched.
+  { match: /claude-(?:opus|sonnet)-5-5(?!\d)/i, drop: ["temperature"] },
   // GitHub Copilot gpt-5.4: temperature unsupported.
   { provider: "github", match: /gpt-5\.4/i, drop: ["temperature"] },
   // OpenAI GPT-5.0 family (gpt-5, gpt-5-mini, gpt-5-nano, dated snapshots) always

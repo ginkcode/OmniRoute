@@ -32,6 +32,48 @@ test("stripUnsupportedParams: drops temperature for claude-opus-4-1 (case insens
   assert.equal(body.temperature, undefined);
 });
 
+// Live (ai.ginklab.cv, 2026-10-19..23): Anthropic intermittently 400s
+// "`temperature` is deprecated for this model." on the Claude 5.5 models —
+// 18 of 23 universal-handoff summary calls carrying temperature: 0.1 failed.
+test("stripUnsupportedParams: drops temperature for claude-opus-5-5 / claude-sonnet-5-5 and variants", () => {
+  for (const model of [
+    "claude-opus-5-5",
+    "claude-sonnet-5-5",
+    "claude-opus-5-5-high",
+    "claude/claude-opus-5-5",
+  ]) {
+    const body: Record<string, unknown> = { temperature: 0.1, max_tokens: 800 };
+    stripUnsupportedParams("claude", model, body);
+    assert.equal(body.temperature, undefined, `${model}: temperature must be stripped`);
+    assert.equal(body.max_tokens, 800, `${model}: other params must survive`);
+  }
+});
+
+test("sanitizeRequestForResolvedTarget: strips temperature from the claude-opus-5-5 handoff body", async () => {
+  const { sanitizeRequestForResolvedTarget } =
+    await import("../../open-sse/services/targetRequestSanitizer.ts");
+  const out = sanitizeRequestForResolvedTarget(
+    {
+      model: "claude-opus-5-5",
+      messages: [{ role: "user", content: "summarize" }],
+      stream: false,
+      max_tokens: 800,
+      temperature: 0.1,
+    },
+    { provider: "claude", model: "claude-opus-5-5" }
+  );
+  assert.equal(out.temperature, undefined);
+  assert.equal(out.max_tokens, 800);
+});
+
+test("stripUnsupportedParams: keeps temperature for claude-opus-5 / claude-sonnet-5-50 (no evidence)", () => {
+  for (const model of ["claude-opus-5", "claude-sonnet-5-50", "claude-haiku-4-5"]) {
+    const body: Record<string, unknown> = { temperature: 0.1 };
+    stripUnsupportedParams("claude", model, body);
+    assert.equal(body.temperature, 0.1, `${model}: temperature must be kept`);
+  }
+});
+
 test("stripUnsupportedParams: keeps temperature for claude-sonnet-4 (only opus-4 affected)", () => {
   const body: Record<string, unknown> = { temperature: 0.7 };
   stripUnsupportedParams("anthropic", "claude-sonnet-4-20250514", body);
