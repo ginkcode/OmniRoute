@@ -22,7 +22,13 @@ test("#10788: ollama-cloud reasoning-capable models declare supportedThinkingEff
   );
   assert.deepEqual(control.supportedThinkingEfforts, ["low", "medium", "high"]);
 
-  const reasoningModelIds = ["glm-5.1", "glm-5.2", "deepseek-v4-pro", "deepseek-v4-flash"];
+  const reasoningModelIds = [
+    "glm-5.2",
+    "glm-5.3",
+    "glm-5.3-flash",
+    "deepseek-v4-pro",
+    "deepseek-v4.1-flash",
+  ];
   for (const id of reasoningModelIds) {
     const model = byId.get(id);
     assert.ok(model?.supportsReasoning, `${id} should be flagged as a reasoning model`);

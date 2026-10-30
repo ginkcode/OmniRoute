@@ -319,13 +319,10 @@ export const FREE_MODEL_BUDGETS: FreeModelBudget[] = [
   // included · Includes access to starter models · Add credits to unlock all models"; docs.ollama.com/cloud:
   // "usage resets monthly". No token figure and no named starter-model list ⇒ recurring-uncapped.
   { provider: "ollama-cloud", modelId: "deepseek-v4-pro", displayName: "DeepSeek V4 Pro", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "ollama-cloud", tos: "ambiguous" },
-  { provider: "ollama-cloud", modelId: "deepseek-v4-flash", displayName: "DeepSeek V4 Flash", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "ollama-cloud", tos: "ambiguous" },
   { provider: "ollama-cloud", modelId: "kimi-k2.6", displayName: "Kimi K2.6", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "ollama-cloud", tos: "ambiguous" },
-  { provider: "ollama-cloud", modelId: "glm-5.1", displayName: "GLM 5.1", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "ollama-cloud", tos: "ambiguous" },
   { provider: "ollama-cloud", modelId: "minimax-m2.7", displayName: "MiniMax M2.7", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "ollama-cloud", tos: "ambiguous" },
   { provider: "ollama-cloud", modelId: "gemma4:31b", displayName: "Gemma 4 31B", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "ollama-cloud", tos: "ambiguous" },
   { provider: "ollama-cloud", modelId: "nemotron-3-super", displayName: "NVIDIA Nemotron 3 Super", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "ollama-cloud", tos: "ambiguous" },
-  { provider: "ollama-cloud", modelId: "qwen3.5:397b", displayName: "Qwen 3.5 397B", monthlyTokens: 0, creditTokens: 0, freeType: "recurring-uncapped", poolKey: "ollama-cloud", tos: "ambiguous" },
   { provider: "opencode", modelId: "big-pickle", displayName: "Big Pickle", monthlyTokens: 0, creditTokens: 0, freeType: "keyless", poolKey: "opencode", tos: "avoid" },
   { provider: "opencode", modelId: "deepseek-v4-flash-free", displayName: "DeepSeek V4 Flash Free", monthlyTokens: 0, creditTokens: 0, freeType: "keyless", poolKey: "opencode", tos: "avoid" },
   { provider: "opencode", modelId: "minimax-m2.5-free", displayName: "MiniMax M2.5 Free", monthlyTokens: 0, creditTokens: 0, freeType: "keyless", poolKey: "opencode", tos: "avoid" },

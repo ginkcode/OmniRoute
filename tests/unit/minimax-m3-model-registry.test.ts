@@ -33,7 +33,11 @@ describe("MiniMax M3 model registration (#3110)", () => {
     const entry = REGISTRY.opencode;
     assert.ok(entry, "opencode registry entry must exist");
     const m3 = entry.models.find((m) => m.id === "minimax-m3-free");
-    assert.equal(m3, undefined, "minimax-m3-free was delisted from OpenCode Zen's free tier (#6998)");
+    assert.equal(
+      m3,
+      undefined,
+      "minimax-m3-free was delisted from OpenCode Zen's free tier (#6998)"
+    );
   });
 
   it("opencode-go provider has minimax-m3 with Claude targetFormat", () => {
@@ -64,13 +68,13 @@ describe("MiniMax M3 model registration (#3110)", () => {
     assert.equal(m3.contextLength, 1_048_576);
   });
 
-  it("ollama-cloud provider has minimax-m3 with 1M context", () => {
+  it("ollama-cloud provider has minimax-m3 with Ollama's 512K context", () => {
     const entry = REGISTRY["ollama-cloud"];
     assert.ok(entry, "ollama-cloud registry entry must exist");
     const m3 = entry.models.find((m) => m.id === "minimax-m3");
     assert.ok(m3, "minimax-m3 must be in ollama-cloud models");
     assert.equal(m3.name, "MiniMax M3");
-    assert.equal(m3.contextLength, 1_048_576);
+    assert.equal(m3.contextLength, 512_000);
   });
 
   it("minimax uses openai format (not claude) so images work via /v1/chat/completions", () => {
